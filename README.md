@@ -16,6 +16,11 @@ Make a completed AI answer easier to read.
 Declaw rewrites the latest answer in a style you choose. The original stays intact.
 The rewrite appears as a display-only entry. It never enters the agent's context.
 
+> **Context-safe by design:** the rewrite is never fed back into the agent, compaction,
+> tools, skills, or prompts. Other work sees the original conversation exactly as it was.
+
+[Try the hosted playground](https://jzlosman.github.io/declaw/) · [Install Declaw](#install)
+
 ## Install
 
 Install the package from npm:
@@ -103,10 +108,16 @@ It also preserves meaning rules such as:
 These checks reduce errors. They cannot prove that a model preserved every meaning.
 Read important rewrites against the original.
 
-## Privacy and limits
+## Context isolation, privacy, and limits
 
-Each request sends one protected answer to the selected rewrite model. It does not
-send conversation history, earlier requests, project files, tools, or reasoning.
+Declaw is a display projection, not a second conversation. Rewritten text is never
+made available to the agent as context: it is excluded from future prompts, tool
+planning, skill and prompt evaluation, and session compaction. This prevents a
+rewrite's changed wording from influencing later work.
+
+Each rewrite request sends only one protected answer to the selected rewrite model.
+It does not send conversation history, earlier requests, project files, tools, or
+reasoning.
 
 Declaw uses its own model and style settings. It does not change the main agent's
 model or thinking level. The default rewrite model is:
@@ -126,8 +137,9 @@ after reload, but Pi does not send them back to the agent or include them in com
 
 ## Playground
 
-The static playground uses saved outputs. It makes no browser model calls and collects
-no visitor credentials or analytics.
+The [hosted playground](https://jzlosman.github.io/declaw/) is a static demonstration
+using saved outputs. It makes no browser model calls and collects no visitor credentials
+or analytics.
 
 ```sh
 npm run build:playground
