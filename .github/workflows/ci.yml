@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   test:
@@ -28,5 +29,6 @@ jobs:
           files: ./coverage/lcov.info
           disable_search: true
           fail_ci_if_error: true
+          use_oidc: true
       - name: Build playground
         run: npm run build:playground
