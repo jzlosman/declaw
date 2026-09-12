@@ -11,13 +11,13 @@
 [![Stars](https://img.shields.io/github/stars/jzlosman/declaw)](https://github.com/jzlosman/declaw/stargazers)
 [![Forks](https://img.shields.io/github/forks/jzlosman/declaw)](https://github.com/jzlosman/declaw/network/members)
 
-Make a completed AI answer easier to read.
+Agent-summary slop is annoying enough. The buzzwords, fake certainty, and excessive polish make it harder to tell what matters.
 
-Declaw rewrites the latest answer in a style you choose. The original stays intact.
-The rewrite appears as a display-only entry. It never enters the agent's context.
+There are good tools for cleaning it up: [Paseo Plain](https://github.com/scowalt/paseo-plain), [Speak Like You Eat](https://github.com/wtfzambo/speak-like-you-eat), [ASD-STE100](https://github.com/danyuchn/asd-ste100-skill), [I Have ADHD](https://github.com/ayghri/i-have-adhd), [Squirrel Mode](https://github.com/thgMatajs/squirrel-mode), and others.
 
-> **Context-safe by design:** the rewrite is never fed back into the agent, compaction,
-> tools, skills, or prompts. Other work sees the original conversation exactly as it was.
+Used as ordinary prompts or skills, though, these styles can bleed into the rest of the conversation. That can change how the agent reads your requests and writes its next answer.
+
+Declaw takes a different approach. It rewrites the most recent agent response in a style you choose, using a separate `pi` instance with no tools, skills, or extensions loaded. The result is display-only: the original conversation stays untouched, and the rewrite never enters the agent's context.
 
 [Try the hosted playground](https://jzlosman.github.io/declaw/) · [Install Declaw](#install)
 
@@ -58,14 +58,14 @@ Press **Esc** to cancel. Declaw never rewrites automatically.
 
 ## Styles
 
-| ID | Style | Source |
-| --- | --- | --- |
-| `plain` | Paseo Plain | [scowalt/paseo-plain](https://github.com/scowalt/paseo-plain) |
-| `terse` | Terse | Local preset |
-| `adhd` | I Have ADHD | [ayghri/i-have-adhd](https://github.com/ayghri/i-have-adhd) |
-| `squirrel` | Squirrel Mode | [thgMatajs/squirrel-mode](https://github.com/thgMatajs/squirrel-mode) |
-| `ste` | ASD-STE100 | [danyuchn/asd-ste100-skill](https://github.com/danyuchn/asd-ste100-skill) |
-| `slye` | Speak Like You Eat | [wtfzambo/speak-like-you-eat](https://github.com/wtfzambo/speak-like-you-eat) |
+| ID         | Style              | Source                                                                        |
+| ---------- | ------------------ | ----------------------------------------------------------------------------- |
+| `plain`    | Paseo Plain        | [scowalt/paseo-plain](https://github.com/scowalt/paseo-plain)                 |
+| `terse`    | Terse              | Local preset                                                                  |
+| `adhd`     | I Have ADHD        | [ayghri/i-have-adhd](https://github.com/ayghri/i-have-adhd)                   |
+| `squirrel` | Squirrel Mode      | [thgMatajs/squirrel-mode](https://github.com/thgMatajs/squirrel-mode)         |
+| `ste`      | ASD-STE100         | [danyuchn/asd-ste100-skill](https://github.com/danyuchn/asd-ste100-skill)     |
+| `slye`     | Speak Like You Eat | [wtfzambo/speak-like-you-eat](https://github.com/wtfzambo/speak-like-you-eat) |
 
 The six styles are shipped as built-in plugins. You do not install separate packages
 for them. Additional styles can be installed as independent Pi packages; see
@@ -81,6 +81,9 @@ projection. A plugin owns only its style instructions and protected-answer envel
 Plugin IDs are stable, styles are namespaced, collisions are rejected, and user status
 is persisted independently of plugin code. Disabled plugins remain visible in
 `/declaw list` but are unavailable to `/declaw style`.
+
+See the small, functioning [`declaw-style-pirate` example plugin](https://github.com/jzlosman/declaw-style-pirate)
+for a complete third-party package built against this boundary.
 
 Read [`GLOSSARY.md`](GLOSSARY.md) for the domain vocabulary and
 [`ARCHITECTURE.md`](ARCHITECTURE.md) for ports, adapters, actions, and effects.
