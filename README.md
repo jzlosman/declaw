@@ -17,7 +17,7 @@ There are good tools for cleaning it up: [Paseo Plain](https://github.com/scowal
 
 Used as ordinary prompts or skills, though, these styles can bleed into the rest of the conversation. That can change how the agent reads your requests and writes its next answer.
 
-Declaw takes a different approach. It rewrites the most recent agent response in a style you choose, using a separate `pi` instance with no tools, skills, or extensions loaded. The result is display-only: the original conversation stays untouched, and the rewrite never enters the agent's context.
+Paseo Plain was the inspiration for Declaw. It does this as a plugin for Paseo; Declaw takes the idea one step lower in the chain and implements it directly in Pi. A separate `pi` instance with no tools, skills, or extensions rewrites the most recent response, and the result is display-only. The original conversation stays untouched, while the same boundary supports Paseo Plain, the other styles above, and third-party plugins.
 
 [Try the hosted playground](https://jzlosman.github.io/declaw/) · [Install Declaw](#install)
 
