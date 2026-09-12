@@ -1,6 +1,7 @@
 lab/
 lab/runs/
 dist/
+coverage/
 node_modules/
 .impeccable/
 .DS_Store
