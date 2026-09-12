@@ -1,0 +1,17 @@
+lab/
+lab/runs/
+dist/
+node_modules/
+.impeccable/
+.DS_Store
+*.tgz
+*.log
+.env
+.env.*
+.pi/
+auth.json
+models.json
+**/auth.json
+**/models.json
+*.session
+*.jsonl

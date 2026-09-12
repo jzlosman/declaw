@@ -1,0 +1,852 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { readModelChoice, saveModelChoice, DEFAULT_MODEL, readStyleChoice, saveStyleChoice } from '../../src/adapters/settings.ts';
+import { buildStyleRequest, DEFAULT_STYLE_ID, STYLE_IDS, REWRITE_POLICY_VERSION } from '../../src/domain/styles.ts';
+import { BUILTIN_CATALOG, STYLES } from '../../src/plugins/built-in/catalog.ts';
+import { supportsLowThinking } from '../../src/adapters/model.ts';
+import { rewriteAnswer,
+  MAX_INPUT_CHARS, ENTRY_TYPE, TIMEOUT_MS, REWRITE_PROVIDER, REWRITE_MODEL, REWRITE_THINKING, POLICY_VERSION } from '../../src/domain/rewrite.ts';
+import { completedText, latestAnswer, isolatedRequest, SYSTEM_PROMPT } from '../../src/adapters/pi.ts';
+import { rewriteText } from '../../src/domain/preservation.ts';
+
+// Override when Pi is installed outside this Node executable's global prefix.
+const packagePath = join(resolve(process.env.PI_PACKAGE_ROOT ?? join(dirname(process.execPath),
+  '../lib/node_modules/@earendil-works/pi-coding-agent')), 'package.json');
+const requirePi = createRequire(packagePath);
+const root = dirname(packagePath);
+const { loadExtensions } = await import(requirePi.resolve(join(root, 'dist/core/extensions/loader.js')));
+const { SessionManager } = await import(requirePi.resolve(join(root, 'dist/core/session-manager.js')));
+const { initTheme, getThemeByName } = await import(requirePi.resolve(join(root, 'dist/modes/interactive/theme/theme.js')));
+initTheme('dark', false);
+const theme = getThemeByName('dark');
+const cwd = fileURLToPath(new URL('../..', import.meta.url));
+const model: any = { id: REWRITE_MODEL, provider: REWRITE_PROVIDER, api: 'openai-codex-responses', maxTokens: 8192, reasoning: true };
+const mainModel = { ...model, id: 'gpt-6-astra' };
+const rewrittenMock = (text: string) => text.replace(/^The service uses /, 'This service uses ');
+const requestTarget = (context: any): string => {
+  const payload = context.messages[0].content;
+  return payload.startsWith('Context:\n\n\nTarget:\n')
+    ? payload.slice('Context:\n\n\nTarget:\n'.length) : JSON.parse(payload).assistantMessage;
+};
+const answer = (text = 'The service uses `config.json` and waits 25 seconds.', extra = {}): any => ({
+  role: 'assistant', content: [{ type: 'text', text }], stopReason: 'stop',
+  api: model.api, provider: model.provider, model: model.id, timestamp: 1, ...extra,
+});
+const tokens = (text: string) => text.match(/⟦KEEP_[^⟧]+⟧/g) ?? [];
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+const reload = (sm: any) => SessionManager.inMemory(cwd, undefined,
+  JSON.parse(JSON.stringify([sm.getHeader(), ...sm.getEntries()])));
+
+async function harness(t: any, seed = true, existingAgentDir?: string) {
+  const agentDir = existingAgentDir ?? await mkdtemp(join(tmpdir(), 'plain-test-'));
+  if (!existingAgentDir) t.after(() => rm(agentDir, { recursive: true, force: true }));
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  let loaded: any;
+  try {
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+    loaded = await loadExtensions([join(cwd, 'index.ts')], cwd);
+  } finally {
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+  }
+  assert.equal(process.env.PI_CODING_AGENT_DIR, previousAgentDir, 'restore agent-dir env immediately after loading');
+  assert.deepEqual(loaded.errors, []);
+  const ext = loaded.extensions[0];
+  const sm = SessionManager.inMemory(cwd);
+  if (seed) {
+    sm.appendMessage({ role: 'user', content: 'PRIVATE_USER_HISTORY', timestamp: 1 });
+    sm.appendMessage(answer('PRIVATE_OLD_ANSWER'));
+    sm.appendMessage({ role: 'toolResult', toolCallId: 'secret', toolName: 'bash',
+      content: [{ type: 'text', text: 'PRIVATE_TOOL_RESULT' }], isError: false, timestamp: 1 });
+    sm.appendMessage(answer(undefined, { content: [
+      { type: 'thinking', thinking: 'PRIVATE_REASONING', thinkingSignature: 'PRIVATE_SIGNATURE' },
+      ...answer().content,
+    ] }));
+    sm.appendCustomEntry('other-extension', { text: 'PRIVATE_CUSTOM_ENTRY' });
+  }
+  const calls: any[] = [], notices: string[] = [], rendered: string[] = [], picks: any[] = [];
+  const callWaiters = new Map<number, ReturnType<typeof deferred<any[]>>>();
+  const authStarted = deferred();
+  let loader: any;
+  const h: any = { sm, ext, calls, notices, rendered, picks, auth: true, idle: true, rewriteModel: model,
+    agentDir, settingsPath: join(agentDir, 'declaw', 'settings.json'), stylePath: join(agentDir, 'declaw', 'style.json'),
+    available: [model], authCalls: [], loaderFrames: [],
+    providerCalls: [], results: [], findCalls: [],
+    authResult: { ok: true, apiKey: 'FAKE_API_KEY', headers: { 'x-test': 'fake' }, env: { TEST_ONLY: 'fake' } },
+    resolveAuth: async () => h.authResult,
+    complete: async (_model: any, context: any) => answer(rewrittenMock(requestTarget(context))),
+    select: async () => undefined,
+    waitForAuth: () => authStarted.promise,
+    waitForCall: (index = 0) => {
+      if (calls[index]) return Promise.resolve(calls[index]);
+      if (!callWaiters.has(index)) callWaiters.set(index, deferred<any[]>());
+      return callWaiters.get(index)!.promise;
+    },
+  };
+  h.provider = { streamSimple: (...args: any[]) => {
+    const index = calls.push(args) - 1;
+    const result = Promise.resolve().then(() => h.complete(...args));
+    h.results.push(result);
+    callWaiters.get(index)?.resolve(args);
+    return { result: () => result };
+  } };
+  const ctx: any = { mode: 'tui', hasUI: true, model: mainModel, thinkingLevel: 'high', sessionManager: sm,
+    isIdle: () => h.idle,
+    modelRegistry: { find: (provider: string, id: string) => {
+      h.findCalls.push([provider, id]);
+      return [h.rewriteModel, ...h.available.filter((m: any) => m.id !== model.id || m.provider !== model.provider)]
+        .find((m: any) => m?.provider === provider && m.id === id);
+    }, getAvailable: () => h.available,
+      hasConfiguredAuth: (m: any) => h.auth && m.auth !== false,
+      getProvider: (provider: string) => { h.providerCalls.push(provider); return h.provider; },
+      getApiKeyAndHeaders: (m: any) => {
+        h.authCalls.push(m);
+        const result = h.resolveAuth(m);
+        authStarted.resolve();
+        return result;
+      },
+      complete: () => assert.fail('must use provider.streamSimple, not registry.complete'),
+    },
+    ui: { notify: (message: string) => notices.push(message),
+      select: (...args: any[]) => { picks.push(args); return h.select(...args); },
+      custom: async (factory: any) => {
+      try {
+        return await new Promise((resolve) => {
+          loader = factory({ requestRender() {} }, theme, {}, resolve);
+          h.loader = loader;
+          h.loaderFrames.push(loader.render(200).join('\n'));
+        });
+      } finally { loader?.dispose(); loader = undefined; }
+    } },
+  };
+  loaded.runtime.setModel = () => assert.fail('/declaw must not change the main model');
+  loaded.runtime.setThinkingLevel = () => assert.fail('/declaw must not change main thinking');
+  loaded.runtime.appendEntry = (customType: string, data: any) => {
+    const id = ctx.sessionManager.appendCustomEntry(customType, data);
+    const entry = ctx.sessionManager.getEntries().find((e: any) => e.id === id);
+    const renderer = ext.entryRenderers.get(customType);
+    assert.ok(renderer, 'custom entry has a registered renderer');
+    rendered.push(renderer(entry, {}, theme).render(100).join('\n'));
+  };
+  h.ctx = ctx;
+  h.run = (args = '') => ext.commands.get('declaw').handler(args, ctx);
+  h.emit = async (type: string) => {
+    for (const handler of ext.handlers.get(type) ?? []) await handler({ type }, ctx);
+  };
+  h.entries = () => ctx.sessionManager.getEntries().filter((e: any) => e.customType === ENTRY_TYPE);
+  t.after(async () => { await h.emit('session_shutdown'); loader?.dispose(); loaded.runtime.invalidate(); });
+  return h;
+}
+
+test('protected spans round-trip exactly, including fences, CRLF, Unicode and replacement syntax', async () => {
+  const spans = ['`a$&b`', '``a`b``', '"exact words"', '“curly quotation”', "'single quotation'",
+    '[guide](https://example.test/a)', 'https://example.test/x?q=1', '/tmp/a.txt', './src/file.ts',
+    'C:\\work\\file.ts', 'config.yaml', '25', '-3.5%', 'npm test -- --run',
+    '```ts\r\nconst x = "$&";\r\n```', '~~~sh\necho exact\n~~~', '```\nunclosed fence'];
+  for (const span of spans) {
+    const original = `Preserve this:\n${span}\nRésumé remains unchanged.\n`;
+    let count = 0;
+    assert.equal(await rewriteText(original, async (masked) => {
+      count++;
+      assert.ok(tokens(masked).length > 0, span);
+      // Random placeholder IDs can themselves contain numeric spans such as "25".
+      assert.ok(!masked.replace(/⟦KEEP_[^⟧]+⟧/g, '').includes(span), span);
+      return masked;
+    }), original, span);
+    assert.equal(count, 1);
+  }
+  assert.equal(await rewriteText('Already clear.', async (text) => text), 'Already clear.');
+});
+
+test('rejects missing, duplicated, reordered, altered and invented placeholders', async () => {
+  const mutations = [
+    (s: string, ts: string[]) => s.replace(ts[0], ''),
+    (s: string, ts: string[]) => s + ts[0],
+    (s: string, ts: string[]) => s.replace(ts[0], 'SWAP').replace(ts[1], ts[0]).replace('SWAP', ts[1]),
+    (s: string, ts: string[]) => s.replace(ts[0], ts[0].replace('KEEP_', 'KEPT_')),
+    (s: string) => s + ' ⟦KEEP_invented_0⟧',
+  ];
+  for (const mutate of mutations) {
+    await assert.rejects(rewriteText('Use `one` before `two`.', async (s) => mutate(s, tokens(s))), /preservation/);
+  }
+  for (const added of ['99', '`invented`', '/new/path', 'https://new.test', '"invented quote"', '```\ncode\n```']) {
+    await assert.rejects(rewriteText('Clear prose.', async (s) => `${s}\n${added}`), /preservation/);
+  }
+  for (const output of ['', '   ', 'x'.repeat(64001)]) {
+    await assert.rejects(rewriteText('Clear prose.', async () => output), /empty-or-oversize/);
+  }
+});
+
+test('latest answer skips non-assistant entries but never falls back past a failed assistant', () => {
+  const entry = (message: any, id = 'latest'): any => ({ type: 'message', id, message });
+  const base: any[] = [entry(answer('Earlier.'), 'old'), entry(answer('Latest.')),
+    { type: 'custom', data: { text: 'Not an answer.' } },
+    entry({ role: 'user', content: 'Not an answer.' }),
+    entry({ role: 'custom', content: 'Not an answer.' })];
+  assert.deepEqual(latestAnswer(base), { id: 'latest', text: 'Latest.' });
+  for (const failure of [answer('Partial', { stopReason: 'length' }), answer('Failed', { stopReason: 'error' }),
+    answer('Cancelled', { stopReason: 'aborted' }), answer('', { content: [{ type: 'thinking', thinking: 'secret' }] }),
+    answer('Text', { errorMessage: 'PRIVATE_PROVIDER_ERROR' }),
+    answer('Text', { content: [...answer().content, { type: 'toolCall', id: 'x', name: 'bash', arguments: {} }] })]) {
+    assert.equal(latestAnswer([...base, entry(failure)]), undefined);
+    assert.equal(completedText(failure), undefined);
+  }
+});
+
+test('isolated requests have fresh session IDs and no ambient context', () => {
+  const signal = new AbortController().signal;
+  const a = isolatedRequest('masked only', model, signal), b = isolatedRequest('masked only', model, signal);
+  assert.notEqual(a.options.sessionId, b.options.sessionId);
+  assert.equal(a.options.signal, signal);
+  assert.equal(a.options.cacheRetention, 'none');
+  assert.equal(a.options.reasoning, 'low');
+  assert.equal('reasoningEffort' in a.options, false);
+  assert.equal(a.options.maxTokens, model.maxTokens);
+  assert.equal(a.context.systemPrompt, SYSTEM_PROMPT);
+  assert.deepEqual(a.context.tools, []);
+  assert.equal(a.context.messages.length, 1);
+  assert.equal(a.context.messages[0].content, JSON.stringify({ assistantMessage: 'masked only' }));
+});
+
+test('real command calls once with only masked answer; renders durable entry outside model context', async (t) => {
+  const h = await harness(t);
+  const before = structuredClone(h.sm.buildSessionContext().messages);
+  const sourceId = latestAnswer(h.sm.getBranch())!.id;
+  await h.run();
+  assert.equal(h.calls.length, 1);
+  const [selected, context, options] = h.calls[0];
+  assert.equal(selected, model);
+  assert.equal(selected.id, 'gpt-5.6-luna');
+  assert.equal(options.reasoning, 'low');
+  assert.equal(h.ctx.model, mainModel);
+  assert.equal(h.ctx.thinkingLevel, 'high');
+  assert.equal(context.systemPrompt, SYSTEM_PROMPT);
+  assert.deepEqual(context.tools, []);
+  assert.deepEqual(Object.keys(context).sort(), ['messages', 'systemPrompt', 'tools']);
+  assert.equal(context.messages.length, 1);
+  assert.equal(context.messages[0].role, 'user');
+  const payload = JSON.parse(context.messages[0].content);
+  assert.deepEqual(Object.keys(payload), ['assistantMessage']);
+  assert.match(payload.assistantMessage, /^The service uses ⟦KEEP_/);
+  assert.equal(tokens(payload.assistantMessage).length, 2);
+  assert.doesNotMatch(JSON.stringify(context), /PRIVATE_/);
+  assert.doesNotMatch(payload.assistantMessage.replace(/⟦KEEP_[^⟧]+⟧/g, ''), /config\.json|25/);
+  assert.notEqual(options.sessionId, h.sm.getSessionId());
+  assert.equal(h.entries().length, 1);
+  assert.equal(h.entries()[0].data.sourceEntryId, sourceId);
+  assert.equal(h.entries()[0].data.text, rewrittenMock(answer().content[0].text));
+  assert.equal(h.entries()[0].data.model, `${REWRITE_PROVIDER}/${REWRITE_MODEL}`);
+  assert.equal(h.entries()[0].data.thinkingLevel, REWRITE_THINKING);
+  assert.equal(h.entries()[0].data.version, REWRITE_POLICY_VERSION);
+  assert.equal(h.entries()[0].data.style, DEFAULT_STYLE_ID);
+  assert.match(h.rendered[0], /gpt-5\.6-luna/);
+  assert.match(h.rendered[0], /low thinking/);
+  assert.match(h.rendered[0], /Plain English/);
+  assert.match(h.rendered[0], /config\.json/);
+  assert.deepEqual(h.sm.buildSessionContext().messages, before);
+  h.ctx.sessionManager = reload(h.sm);
+  assert.deepEqual(h.ctx.sessionManager.buildSessionContext().messages, before);
+  h.ctx.sessionManager.appendCompaction('Safe summary.', sourceId, 100);
+  const compacted = h.ctx.sessionManager.buildSessionContext().messages;
+  await h.run();
+  assert.equal(h.calls.length, 2);
+  assert.notEqual(h.calls[0][2].sessionId, h.calls[1][2].sessionId);
+  assert.deepEqual(h.ctx.sessionManager.buildSessionContext().messages, compacted);
+  assert.deepEqual(reload(h.ctx.sessionManager).buildSessionContext().messages, compacted);
+  assert.equal(h.entries().length, 2);
+});
+
+test('guards prevent model calls in busy, non-TUI, no-answer, no-auth, no-model and oversize states', async (t) => {
+  for (const scenario of ['busy', 'rpc', 'no-answer', 'failed-answer', 'no-auth', 'no-model', 'oversize', 'arguments']) {
+    await t.test(scenario, async (t) => {
+      const h = await harness(t, scenario !== 'no-answer');
+      if (scenario === 'busy') h.idle = false;
+      if (scenario === 'rpc') { h.ctx.mode = 'rpc'; h.ctx.hasUI = false; }
+      if (scenario === 'no-auth') h.auth = false;
+      if (scenario === 'no-model') h.rewriteModel = undefined;
+      if (scenario === 'failed-answer') h.sm.appendMessage(answer('Partial', { stopReason: 'length' }));
+      if (scenario === 'oversize') h.sm.appendMessage(answer('x'.repeat(MAX_INPUT_CHARS + 1)));
+      await h.run(scenario === 'arguments' ? 'unexpected' : '');
+      assert.equal(h.calls.length, 0);
+      assert.equal(h.entries().length, 0);
+    });
+  }
+});
+
+test('Luna selection works without a main model and never changes main thinking', async (t) => {
+  const h = await harness(t);
+  h.ctx.model = undefined;
+  h.ctx.thinkingLevel = 'max';
+  await h.run();
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0][0], model);
+  assert.equal(h.calls[0][2].reasoning, 'low');
+  assert.equal(h.ctx.model, undefined);
+  assert.equal(h.ctx.thinkingLevel, 'max');
+});
+
+test('model configuration cannot silently remap low thinking or fall back to Astra', async (t) => {
+  for (const patch of [{ thinkingLevelMap: { low: 'high' } }, { thinkingLevelMap: { low: null } },
+    { reasoning: false }]) {
+    const h = await harness(t);
+    h.rewriteModel = { ...model, ...patch };
+    await h.run();
+    assert.equal(h.calls.length, 0);
+    assert.match(h.notices.join(' '), /low thinking support/);
+    assert.equal(h.ctx.model, mainModel);
+  }
+});
+
+test('unchanged model output is reported without adding a duplicate or automatically retrying', async (t) => {
+  const h = await harness(t);
+  h.complete = async (_m: any, c: any) => answer(JSON.parse(c.messages[0].content).assistantMessage);
+  await h.run();
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.entries().length, 0);
+  assert.match(h.notices.join(' '), /unchanged text/);
+  await assert.rejects(rewriteAnswer('Already clear.', async () => '\nAlready clear.\n'), /unchanged text/);
+});
+
+test('malformed, truncated, tool-call and preservation failures never append or expose payloads', async (t) => {
+  for (const response of [null, {}, answer('partial', { stopReason: 'length' }),
+    answer('PRIVATE_OUTPUT', { content: [...answer('PRIVATE_OUTPUT').content,
+      { type: 'toolCall', id: 'x', name: 'bash', arguments: {} }] }),
+    answer('PRIVATE_OUTPUT', { errorMessage: 'PRIVATE_ERROR' }), answer('Missing protected spans.'),
+    answer('', { content: [{ type: 'thinking', thinking: 'PRIVATE_REASONING' }] })]) {
+    const h = await harness(t);
+    h.complete = async () => response;
+    await h.run();
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.entries().length, 0);
+    assert.ok(h.notices.length > 0);
+    assert.doesNotMatch(h.notices.join(' '), /PRIVATE_/);
+  }
+  await assert.rejects(rewriteAnswer('Plain.', async () => { throw new Error('PRIVATE_PROVIDER_PAYLOAD'); }),
+    (error: any) => !error.message.includes('PRIVATE_'));
+  let called = false;
+  await assert.rejects(rewriteAnswer('x'.repeat(MAX_INPUT_CHARS + 1), async () => { called = true; return answer(); }), /too long/);
+  assert.equal(called, false);
+});
+
+test('cancellation and lifecycle events release active request and discard late provider results', async (t) => {
+  for (const event of ['escape', 'session_shutdown', 'session_tree', 'agent_start']) {
+    await t.test(event, async (t) => {
+      const h = await harness(t);
+      let finish: any;
+      h.complete = () => new Promise((resolve) => { finish = resolve; });
+      const pending = h.run();
+      await h.waitForCall();
+      assert.equal(h.calls.length, 1);
+      await h.run();
+      assert.equal(h.calls.length, 1, 'concurrent invocation is blocked');
+      if (event === 'escape') h.loader.handleInput('\x1b');
+      else await h.emit(event);
+      await pending;
+      assert.equal(h.calls[0][2].signal.aborted, true);
+      assert.equal(h.entries().length, 0);
+      h.complete = async (_m: any, c: any) => answer(rewrittenMock(JSON.parse(c.messages[0].content).assistantMessage));
+      await h.run();
+      assert.equal(h.entries().length, 1, 'next invocation succeeds even while old provider hangs');
+      finish(answer(JSON.parse(h.calls[0][1].messages[0].content).assistantMessage));
+      await h.results[0];
+      assert.equal(h.entries().length, 1, 'late result was not published');
+    });
+  }
+});
+
+test('timeout discards late rejection, reports safe error, and releases the next request', async (t) => {
+  const h = await harness(t);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let rejectLate: any;
+  h.complete = () => new Promise((_resolve, reject) => { rejectLate = reject; });
+  const pending = h.run();
+  await h.waitForCall();
+  t.mock.timers.tick(TIMEOUT_MS);
+  await pending;
+  assert.equal(h.entries().length, 0);
+  assert.equal(h.calls[0][2].signal.aborted, true);
+  assert.match(h.notices.join(' '), /timed out/);
+  rejectLate(new Error('PRIVATE_LATE_PROVIDER_REJECTION'));
+  await assert.rejects(h.results[0], /PRIVATE_LATE_PROVIDER_REJECTION/);
+  assert.doesNotMatch(h.notices.join(' '), /PRIVATE_/);
+  h.complete = async (_m: any, c: any) => answer(rewrittenMock(JSON.parse(c.messages[0].content).assistantMessage));
+  await h.run();
+  assert.equal(h.entries().length, 1);
+  t.mock.timers.reset();
+});
+
+test('session replacement or a newer answer suppresses stale publication without lifecycle event', async (t) => {
+  for (const change of ['session', 'answer', 'busy']) {
+    const h = await harness(t);
+    let finish: any;
+    h.complete = () => new Promise((resolve) => { finish = resolve; });
+    const pending = h.run();
+    await h.waitForCall();
+    if (change === 'session') h.ctx.sessionManager = SessionManager.inMemory(cwd);
+    if (change === 'answer') h.sm.appendMessage(answer('Newer answer.'));
+    if (change === 'busy') h.idle = false;
+    finish(answer(JSON.parse(h.calls[0][1].messages[0].content).assistantMessage));
+    await pending;
+    assert.equal(h.entries().length, 0);
+  }
+});
+
+test('picker saves a separate preference without an answer or model call, and fresh extensions retain it', async (t) => {
+  const h = await harness(t, false);
+  const alternate = { ...model, provider: 'anthropic', id: 'reasoning-model', api: 'anthropic-messages' };
+  h.available = [model, alternate];
+  h.select = async (_title: string, labels: string[]) => labels.find((label) => label.startsWith('anthropic/'));
+  await h.run('model');
+  assert.equal(h.picks.length, 1);
+  assert.match(h.picks[0][0], /low thinking/);
+  assert.ok(h.picks[0][1].includes(`${model.provider}/${model.id}  (current)`));
+  assert.deepEqual(JSON.parse(await readFile(h.settingsPath, 'utf8')),
+    { version: 1, provider: alternate.provider, modelId: alternate.id });
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.authCalls.length, 0);
+  assert.equal(h.providerCalls.length, 0);
+  assert.equal(h.entries().length, 0);
+  assert.equal(h.ctx.model, mainModel);
+  assert.equal(h.ctx.thinkingLevel, 'high');
+  assert.equal((await stat(h.settingsPath)).mode & 0o777, 0o600);
+  assert.equal((await stat(dirname(h.settingsPath))).mode & 0o777, 0o700);
+  assert.deepEqual(await readdir(dirname(h.settingsPath)), ['settings.json']);
+
+  const fresh = await harness(t, true, h.agentDir);
+  fresh.available = [model, alternate];
+  await fresh.run();
+  assert.equal(fresh.calls[0][0], alternate);
+  assert.equal(fresh.calls[0][2].reasoning, 'low');
+  assert.equal(fresh.entries()[0].data.model, 'anthropic/reasoning-model');
+  assert.equal(fresh.ctx.model, mainModel);
+  assert.equal(fresh.ctx.thinkingLevel, 'high');
+  fresh.ctx.sessionManager = reload(fresh.sm);
+  await fresh.run();
+  assert.equal(fresh.calls[1][0], alternate);
+  await fresh.run('model');
+  assert.ok(fresh.picks[0][1].includes('anthropic/reasoning-model  (current)'));
+});
+
+test('each harness captures its own temporary settings path, not later environment or global settings', async (t) => {
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  const first = await harness(t, false);
+  const second = await harness(t, false);
+  assert.notEqual(first.agentDir, second.agentDir);
+  assert.equal(process.env.PI_CODING_AGENT_DIR, previousAgentDir);
+  first.available = [{ ...model, provider: 'test', id: 'first-only' }];
+  first.select = async (_title: string, labels: string[]) => labels[0];
+  await first.run('model');
+  assert.deepEqual(await readModelChoice(first.settingsPath), { provider: 'test', modelId: 'first-only' });
+  await assert.rejects(stat(second.settingsPath), { code: 'ENOENT' });
+  second.select = async (_title: string, labels: string[]) => labels[0];
+  await second.run('model');
+  assert.deepEqual(await readModelChoice(second.settingsPath), DEFAULT_MODEL);
+  assert.deepEqual(await readModelChoice(first.settingsPath), { provider: 'test', modelId: 'first-only' });
+  assert.equal(process.env.PI_CODING_AGENT_DIR, previousAgentDir);
+  assert.equal(first.calls.length + second.calls.length, 0);
+});
+
+test('picker cancellation ignores a late selection and blocks overlapping commands while open', async (t) => {
+  const h = await harness(t, false);
+  const opened = deferred();
+  const selection = deferred<string>();
+  h.select = () => { opened.resolve(); return selection.promise; };
+  const pending = h.run('model');
+  await opened.promise;
+  await h.run('model');
+  assert.equal(h.picks.length, 1);
+  assert.match(h.notices.join(' '), /Wait for the current request/);
+  await h.emit('session_tree');
+  assert.equal(h.picks[0][2].signal.aborted, true);
+  selection.resolve(h.picks[0][1][0]);
+  await pending;
+  await assert.rejects(stat(h.settingsPath), { code: 'ENOENT' });
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.authCalls.length, 0);
+  h.select = async (_title: string, labels: string[]) => labels[0];
+  await h.run('model');
+  assert.deepEqual(await readModelChoice(h.settingsPath), DEFAULT_MODEL);
+});
+
+test('picker cancel leaves settings and main agent unchanged and makes no requests', async (t) => {
+  for (const saved of [false, true]) {
+    const h = await harness(t, false);
+    if (saved) await saveModelChoice(h.settingsPath, DEFAULT_MODEL);
+    const before = saved ? await readFile(h.settingsPath, 'utf8') : undefined;
+    await h.run('model');
+    assert.equal(h.calls.length, 0);
+    assert.equal(h.authCalls.length, 0);
+    assert.equal(h.ctx.model, mainModel);
+    assert.equal(h.ctx.thinkingLevel, 'high');
+    if (saved) assert.equal(await readFile(h.settingsPath, 'utf8'), before);
+    else await assert.rejects(stat(h.settingsPath), { code: 'ENOENT' });
+  }
+});
+
+test('picker lists only authenticated models that preserve low thinking, sorted across providers', async (t) => {
+  const h = await harness(t, false);
+  const allowed = { ...model, provider: 'anthropic', id: 'allowed', api: 'anthropic-messages', thinkingLevelMap: { low: 'low' } };
+  h.available = [
+    model, { ...model, id: 'nonreasoning', reasoning: false },
+    { ...model, id: 'unauthenticated', auth: false },
+    { ...model, id: 'remapped', thinkingLevelMap: { low: 'high' } },
+    { ...model, id: 'disabled', thinkingLevelMap: { low: null } }, allowed,
+  ];
+  await h.run('model');
+  assert.deepEqual(h.picks[0][1], ['anthropic/allowed', `${model.provider}/${model.id}  (current)`]);
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.authCalls.length, 0);
+  h.available = h.available.filter((m: any) => m !== model && m !== allowed);
+  await h.run('model');
+  assert.equal(h.picks.length, 1);
+  assert.match(h.notices.join(' '), /No authenticated models with low thinking support/);
+});
+
+test('invalid config blocks rewrites but picker can repair it without making requests', async (t) => {
+  const h = await harness(t);
+  await mkdir(dirname(h.settingsPath), { recursive: true });
+  await writeFile(h.settingsPath, '{PRIVATE_INVALID_JSON');
+  await h.run();
+  assert.equal(h.calls.length, 0);
+  assert.match(h.notices.join(' '), /settings file is invalid/);
+  assert.doesNotMatch(h.notices.join(' '), /PRIVATE_/);
+  h.select = async (_title: string, labels: string[]) => labels[0];
+  await h.run('model');
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.authCalls.length, 0);
+  assert.deepEqual(await readModelChoice(h.settingsPath), DEFAULT_MODEL);
+  await h.run();
+  assert.equal(h.calls.length, 1);
+});
+
+test('missing saved model never falls back to Luna or the main agent model', async (t) => {
+  const h = await harness(t);
+  await saveModelChoice(h.settingsPath, { provider: 'missing-provider', modelId: 'missing-model' });
+  await h.run();
+  assert.deepEqual(h.findCalls, [['missing-provider', 'missing-model']]);
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.authCalls.length, 0);
+  assert.match(h.notices.join(' '), /missing-provider\/missing-model is unavailable/);
+  assert.equal(h.ctx.model, mainModel);
+});
+
+test('provider receives fresh resolved auth, headers, base URL and env with isolated low-thinking context', async (t) => {
+  const h = await harness(t);
+  h.authResult = { ok: true, apiKey: 'FAKE_REFRESHED_KEY', headers: { Authorization: 'FAKE', 'x-model': 'test' },
+    baseUrl: 'https://provider.invalid/custom', env: { CUSTOM_PROVIDER_ENV: 'fake' } };
+  await h.run();
+  assert.deepEqual(h.providerCalls, [model.provider]);
+  assert.deepEqual(h.authCalls, [model]);
+  assert.deepEqual(h.calls[0][0], { ...model, baseUrl: h.authResult.baseUrl });
+  assert.equal(model.baseUrl, undefined, 'auth override must not mutate the catalog model');
+  const options = h.calls[0][2];
+  assert.equal(options.apiKey, h.authResult.apiKey);
+  assert.equal(options.headers, h.authResult.headers);
+  assert.equal(options.env, h.authResult.env);
+  assert.equal(options.reasoning, 'low');
+  assert.equal('reasoningEffort' in options, false);
+  assert.doesNotMatch(JSON.stringify(h.calls[0][1]), /FAKE|PRIVATE_/);
+  h.authResult = { ok: true, apiKey: 'FAKE_SECOND_KEY', headers: {}, env: {} };
+  await h.run();
+  assert.equal(h.authCalls.length, 2, 'resolve auth for every invocation');
+  assert.equal(h.calls[1][2].apiKey, 'FAKE_SECOND_KEY');
+  assert.notEqual(h.calls[0][1], h.calls[1][1]);
+  assert.notEqual(h.calls[0][2].sessionId, h.calls[1][2].sessionId);
+});
+
+test('cancellation while resolving auth prevents the provider request and releases the command', async (t) => {
+  const h = await harness(t);
+  const auth = deferred<any>();
+  h.resolveAuth = () => auth.promise;
+  const pending = h.run();
+  await h.waitForAuth();
+  h.loader.handleInput('\x1b');
+  await pending;
+  assert.equal(h.calls.length, 0);
+  auth.resolve(h.authResult);
+  await auth.promise;
+  h.resolveAuth = async () => h.authResult;
+  await h.run();
+  assert.equal(h.calls.length, 1, 'only the new command reaches the provider');
+  assert.equal(h.entries().length, 1);
+});
+
+test('failed auth or missing provider produces no request or credential disclosure', async (t) => {
+  for (const failure of ['auth', 'provider', 'throw']) {
+    const h = await harness(t);
+    if (failure === 'auth') h.authResult = { ok: false, error: 'PRIVATE_AUTH_ERROR' };
+    if (failure === 'provider') h.provider = undefined;
+    if (failure === 'throw') h.resolveAuth = async () => { throw new Error('PRIVATE_REFRESH_ERROR'); };
+    await h.run();
+    assert.equal(h.calls.length, 0);
+    assert.equal(h.entries().length, 0);
+    assert.ok(h.notices.length > 0);
+    assert.doesNotMatch(h.notices.join(' '), /PRIVATE_/);
+  }
+});
+
+test('supported reasoning APIs receive provider-neutral low thinking', async (t) => {
+  for (const api of ['openai-codex-responses', 'anthropic-messages', 'openai-responses', 'google-generative-ai']) {
+    const h = await harness(t);
+    h.rewriteModel = { ...model, api, thinkingLevelMap: { low: 'low' } };
+    assert.equal(supportsLowThinking(h.rewriteModel), true);
+    await h.run();
+    assert.equal(h.calls.length, 1, api);
+    assert.equal(h.calls[0][0].api, api);
+    assert.equal(h.calls[0][2].reasoning, 'low');
+    assert.equal('reasoningEffort' in h.calls[0][2], false);
+  }
+});
+
+test('active reservation blocks overlapping invocations before async settings reads finish', async (t) => {
+  const h = await harness(t);
+  const pending = h.run();
+  await h.run();
+  await pending;
+  assert.equal(h.calls.length, 1);
+  assert.match(h.notices.join(' '), /Wait for the current request/);
+  const cancelled = h.run();
+  await h.emit('session_tree');
+  await cancelled;
+  assert.equal(h.calls.length, 1, 'lifecycle cancellation before settings resolve sends no request');
+});
+
+test('settings default only on ENOENT, reject invalid schema and replace files privately', async (t) => {
+  const h = await harness(t, false);
+  assert.deepEqual(await readModelChoice(h.settingsPath), DEFAULT_MODEL);
+  await mkdir(dirname(h.settingsPath), { recursive: true });
+  for (const contents of ['{', 'null', '[]', '{}', JSON.stringify({ version: 2, provider: 'x', modelId: 'y' }),
+    JSON.stringify({ version: 1, provider: ' ', modelId: 'y' }),
+    JSON.stringify({ version: 1, provider: 'x', modelId: 1 })]) {
+    await writeFile(h.settingsPath, contents, { mode: 0o644 });
+    await assert.rejects(readModelChoice(h.settingsPath), /settings file is invalid/);
+  }
+  await assert.rejects(readModelChoice(dirname(h.settingsPath)), /Could not read/);
+  await saveModelChoice(h.settingsPath, DEFAULT_MODEL);
+  assert.deepEqual(await readModelChoice(h.settingsPath), DEFAULT_MODEL);
+  assert.equal((await stat(h.settingsPath)).mode & 0o777, 0o600);
+  assert.deepEqual(await readdir(dirname(h.settingsPath)), ['settings.json']);
+  const blockedPath = join(h.settingsPath, 'settings.json');
+  await assert.rejects(saveModelChoice(blockedPath, DEFAULT_MODEL), /Could not save/);
+  assert.deepEqual(await readModelChoice(h.settingsPath), DEFAULT_MODEL);
+});
+
+test('all six built-in styles use the isolated protected runtime path with style metadata', async (t) => {
+  assert.equal(POLICY_VERSION, 8);
+  assert.equal(POLICY_VERSION, REWRITE_POLICY_VERSION);
+  for (const style of STYLE_IDS) {
+    await t.test(style, async (t) => {
+      const h = await harness(t);
+      const before = structuredClone(h.sm.buildSessionContext().messages);
+      await h.run(style);
+      assert.equal(h.calls.length, 1);
+      const [selected, context, options] = h.calls[0];
+      const target = requestTarget(context);
+      const expected = buildStyleRequest(target, style, BUILTIN_CATALOG);
+      assert.equal(context.systemPrompt, expected.system);
+      assert.equal(context.messages[0].content, expected.user);
+      assert.equal(context.messages.length, 1);
+      assert.deepEqual(context.tools, []);
+      assert.equal(selected, model);
+      assert.equal(options.reasoning, 'low');
+      assert.equal(options.cacheRetention, 'none');
+      assert.notEqual(options.sessionId, h.sm.getSessionId());
+      assert.equal(tokens(target).length, 2);
+      assert.doesNotMatch(target.replace(/⟦KEEP_[^⟧]+⟧/g, ''), /config\.json|25/);
+      assert.doesNotMatch(JSON.stringify(context), /PRIVATE_/);
+      if (style === 'slye') assert.ok(context.messages[0].content.startsWith('Context:\n\n\nTarget:\n'));
+      const entry = h.entries()[0];
+      assert.equal(entry.data.style, style);
+      assert.equal(entry.data.version, POLICY_VERSION);
+      assert.equal(entry.data.sourceEntryId, latestAnswer(h.sm.getBranch())!.id);
+      assert.equal(entry.data.text, rewrittenMock(answer().content[0].text));
+      assert.ok(h.rendered[0].includes(style === 'plain' ? 'Plain English' : STYLES[style].name));
+      assert.ok(h.loaderFrames[0].includes(STYLES[style].name));
+      assert.deepEqual(h.sm.buildSessionContext().messages, before);
+      assert.deepEqual(reload(h.sm).buildSessionContext().messages, before);
+      await assert.rejects(stat(h.stylePath), { code: 'ENOENT' });
+      await assert.rejects(stat(h.settingsPath), { code: 'ENOENT' });
+    });
+  }
+});
+
+test('SLYE discards damaged protected spans and respects cancellation', async (t) => {
+  const h = await harness(t);
+  h.complete = async (_m: any, context: any) => {
+    const token = tokens(requestTarget(context))[0];
+    assert.ok(token, 'fixture must contain protected text');
+    return answer(rewrittenMock(requestTarget(context)).replace(token, ''));
+  };
+  await h.run('slye');
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.entries().length, 0);
+  assert.match(h.notices.join(' '), /exact-text checks/);
+  const late = deferred<any>();
+  h.complete = () => late.promise;
+  const pending = h.run('slye');
+  await h.waitForCall(1);
+  h.loader.handleInput('\x1b');
+  await pending;
+  assert.equal(h.calls[1][2].signal.aborted, true);
+  late.resolve(answer(rewrittenMock(requestTarget(h.calls[1][1]))));
+  await h.results[1];
+  assert.equal(h.entries().length, 0);
+});
+
+test('style picker saves each built-in without an answer, auth, provider or rewrite call', async (t) => {
+  for (const style of STYLE_IDS) {
+    const h = await harness(t, false);
+    h.auth = false;
+    h.available = [];
+    h.select = async (_title: string, labels: string[]) => labels.find((label) => label.includes(`(${style})`));
+    await h.run('style');
+    assert.equal(h.picks[0][1].length, 6);
+    for (const id of STYLE_IDS) assert.ok(h.picks[0][1].some((label: string) => label.includes(STYLES[id].name)));
+    assert.deepEqual(JSON.parse(await readFile(h.stylePath, 'utf8')), { version: 1, style });
+    assert.equal((await stat(h.stylePath)).mode & 0o777, 0o600);
+    assert.equal((await stat(dirname(h.stylePath))).mode & 0o777, 0o700);
+    assert.deepEqual(await readdir(dirname(h.stylePath)), ['style.json']);
+    assert.equal(h.calls.length + h.authCalls.length + h.providerCalls.length + h.entries().length, 0);
+    assert.equal(h.ctx.model, mainModel);
+    const fresh = await harness(t, true, h.agentDir);
+    await fresh.run();
+    assert.equal(fresh.entries()[0].data.style, style);
+  }
+});
+
+test('model and style preferences never overwrite each other; one-off styles never persist', async (t) => {
+  const h = await harness(t);
+  await saveModelChoice(h.settingsPath, DEFAULT_MODEL);
+  const modelBefore = await readFile(h.settingsPath, 'utf8');
+  h.select = async (_title: string, labels: string[]) => labels.find((label) => label.includes('(terse)'));
+  await h.run('style');
+  assert.equal(await readFile(h.settingsPath, 'utf8'), modelBefore);
+  const styleBefore = await readFile(h.stylePath, 'utf8');
+  h.select = async (_title: string, labels: string[]) => labels[0];
+  await h.run('model');
+  assert.equal(await readFile(h.stylePath, 'utf8'), styleBefore);
+  for (const style of STYLE_IDS) {
+    await h.run(style);
+    assert.equal(h.entries().at(-1).data.style, style);
+    assert.equal(await readFile(h.stylePath, 'utf8'), styleBefore);
+    assert.equal(await readFile(h.settingsPath, 'utf8'), modelBefore);
+  }
+  await h.run();
+  assert.equal(h.entries().at(-1).data.style, 'terse');
+});
+
+test('style cancellation, unknown selections and stale pickers cannot save', async (t) => {
+  for (const event of ['cancel', 'unknown', 'session_shutdown', 'session_tree', 'agent_start', 'session', 'branch', 'busy']) {
+    const h = await harness(t, false);
+    await saveStyleChoice(h.stylePath, 'slye');
+    const before = await readFile(h.stylePath, 'utf8');
+    const opened = deferred();
+    const selected = deferred<string | undefined>();
+    h.select = () => { opened.resolve(); return selected.promise; };
+    const pending = h.run('style');
+    await opened.promise;
+    assert.ok(h.picks[0][1].some((label: string) => label.includes('(slye)  (current)')));
+    await h.run('model');
+    await h.run('slye');
+    assert.equal(h.picks.length, 1);
+    assert.match(h.notices.join(' '), /Wait for the current request/);
+    if (event.startsWith('session_') || event === 'agent_start') await h.emit(event);
+    if (event === 'session') h.ctx.sessionManager = SessionManager.inMemory(cwd);
+    if (event === 'branch') h.sm.appendMessage(answer());
+    if (event === 'busy') h.idle = false;
+    selected.resolve(event === 'cancel' ? undefined : event === 'unknown' ? 'not-a-style' : h.picks[0][1][0]);
+    await pending;
+    assert.equal(await readFile(h.stylePath, 'utf8'), before, event);
+    assert.equal(h.calls.length + h.authCalls.length + h.entries().length, 0);
+  }
+  const h = await harness(t, false);
+  await h.run('style');
+  await assert.rejects(stat(h.stylePath), { code: 'ENOENT' });
+});
+
+test('invalid style settings fail closed, but style picker repairs them without model access', async (t) => {
+  const h = await harness(t);
+  await mkdir(dirname(h.stylePath), { recursive: true });
+  await saveModelChoice(h.settingsPath, DEFAULT_MODEL);
+  const modelBefore = await readFile(h.settingsPath, 'utf8');
+  for (const value of ['{PRIVATE_INVALID', 'null', '[]', '{}', '{"version":2,"style":"plain"}',
+    '{"version":1,"style":"PRIVATE_UNKNOWN"}', '{"version":1,"style":42}', '{"version":1,"style":" plain "}']) {
+    await writeFile(h.stylePath, value);
+    await h.run();
+    assert.equal(h.calls.length + h.authCalls.length, 0);
+    assert.equal(await readFile(h.stylePath, 'utf8'), value);
+    await assert.rejects(readStyleChoice(h.stylePath), /style settings file is invalid/);
+  }
+  assert.match(h.notices.join(' '), /Run \/declaw style/);
+  assert.doesNotMatch(h.notices.join(' '), /PRIVATE_/);
+  h.select = async (_title: string, labels: string[]) => labels.find((label) => label.includes('(slye)'));
+  await h.run('style');
+  assert.equal(await readStyleChoice(h.stylePath), 'slye');
+  assert.equal(await readFile(h.settingsPath, 'utf8'), modelBefore);
+  assert.equal(h.calls.length + h.authCalls.length, 0);
+  await h.run();
+  assert.equal(h.entries()[0].data.style, 'slye');
+});
+
+test('style file defaults only when missing and failed saves preserve the valid preference', async (t) => {
+  const h = await harness(t, false);
+  assert.equal(await readStyleChoice(h.stylePath), DEFAULT_STYLE_ID);
+  await saveStyleChoice(h.stylePath, 'adhd');
+  await assert.rejects(readStyleChoice(dirname(h.stylePath)), /Could not read/);
+  await assert.rejects(saveStyleChoice(h.stylePath, 'unknown' as any), /Unknown/);
+  await assert.rejects(saveStyleChoice(join(h.stylePath, 'style.json'), 'plain'), /Could not save/);
+  assert.equal(await readStyleChoice(h.stylePath), 'adhd');
+  assert.deepEqual(await readdir(dirname(h.stylePath)), ['style.json']);
+});
+
+test('declaw alias lists plugins and manage persists disabled status', async (t) => {
+  const h = await harness(t, false);
+  const declaw = h.ext.commands.get('declaw');
+  assert.ok(declaw, 'Declaw command alias is registered');
+  await declaw.handler('list', h.ctx);
+  assert.match(h.notices.at(-1), /Paseo Plain \[builtin\/plain\] · active/);
+  h.select = async (_title: string, labels: string[]) => labels.find((label) => label.includes('(builtin/plain)'));
+  await declaw.handler('manage', h.ctx);
+  assert.match(h.notices.at(-1), /Paseo Plain is now disabled/);
+  assert.deepEqual(JSON.parse(await readFile(join(h.agentDir, 'declaw', 'plugins.json'), 'utf8')), {
+    version: 1, plugins: { 'builtin/plain': 'disabled' },
+  });
+  await declaw.handler('style', h.ctx);
+  assert.doesNotMatch(h.picks.at(-1)[1].join(' '), /Paseo Plain/);
+});
+
+test('plugin management can repair an invalid plugin status file', async (t) => {
+  const h = await harness(t, false);
+  await mkdir(dirname(join(h.agentDir, 'declaw', 'plugins.json')), { recursive: true });
+  await writeFile(join(h.agentDir, 'declaw', 'plugins.json'), '{PRIVATE_INVALID');
+  h.select = async (_title: string, labels: string[]) => labels.find((label) => label.includes('(builtin/plain)'));
+  await h.ext.commands.get('declaw').handler('manage', h.ctx);
+  assert.deepEqual(JSON.parse(await readFile(join(h.agentDir, 'declaw', 'plugins.json'), 'utf8')), {
+    version: 1, plugins: { 'builtin/plain': 'disabled' },
+  });
+});
+
+test('legacy entries retain Plain English rendering and completions expose all native styles', async (t) => {
+  const h = await harness(t, false);
+  const renderer = h.ext.entryRenderers.get(ENTRY_TYPE);
+  for (const version of [1, 2, 3]) {
+    const rendered = renderer({ data: { version, text: 'Old rewrite.', sourceEntryId: 'old', model: 'old/model' } }, {}, theme).render(100).join('\n');
+    assert.match(rendered, /Plain English/);
+    assert.match(rendered, /Old rewrite/);
+    assert.match(rendered, /display only/);
+  }
+  const complete = h.ext.commands.get('declaw').getArgumentCompletions;
+  assert.deepEqual(complete('').map((item: any) => item.value), ['model', 'style', 'list', 'manage', ...STYLE_IDS]);
+  assert.deepEqual(complete('sl').map((item: any) => item.value), ['slye']);
+  assert.equal(complete('unknown'), null);
+});

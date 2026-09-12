@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install the Pi runtime used by the extension
+        run: npm install --no-save --ignore-scripts @earendil-works/pi-coding-agent@0.85.1
+      - name: Run tests
+        env:
+          PI_PACKAGE_ROOT: ${{ github.workspace }}/node_modules/@earendil-works/pi-coding-agent
+        run: npm test
+      - name: Build playground
+        run: npm run build:playground

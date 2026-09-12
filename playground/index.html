@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111214">
+  <meta name="description" content="Declaw: compare an original AI answer with a clearer rewrite.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Declaw</title>
+  <link rel="icon" type="image/png" href="assets/declaw-favicon.png">
+  <link rel="preload" href="assets/geist.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+  <script src="data.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body data-side="rewrite" data-view="reading">
+<!-- User revision supersedes the original comp's scale and inspection mechanics.
+     Show the writing, not an explanation of the demo. Small Control Rail; no hero
+     or method popup. One Show changes toggle reveals a unified block/word diff.
+     Mobile uses native page scrolling. Source and saved outputs remain unchanged. -->
+<a class="skip-link" href="#workspace">Skip to answer</a>
+<svg class="icon-definitions" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+  <symbol id="i-document" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M8 13h8M8 17h6"/></symbol>
+  <symbol id="i-prose" viewBox="0 0 24 24"><path d="M4 5h16M4 10h16M4 15h16M4 20h10"/></symbol>
+  <symbol id="i-steps" viewBox="0 0 24 24"><path d="m3 5 2 2 3-4m3 2h10M3 12l2 2 3-4m3 2h10M3 19l2 2 3-4m3 2h10"/></symbol>
+  <symbol id="i-compare" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16M3 10h18"/></symbol>
+  <symbol id="i-action" viewBox="0 0 24 24"><path d="m8 4 11 8-11 8z"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 24 24"><path d="M6 5v10a4 4 0 0 0 4 4h2M6 11h7a5 5 0 0 0 5-5"/><circle cx="6" cy="4" r="2"/><circle cx="18" cy="4" r="2"/><circle cx="14" cy="19" r="2"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="m7 7-5 5 5 5m10-10 5 5-5 5m-3-14-4 18"/></symbol>
+  <symbol id="i-diff" viewBox="0 0 24 24"><path d="M4 7h6M7 4v6M14 7h6M4 17h6M14 17h6M3 12h18"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M15 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"/></symbol>
+</defs></svg>
+<div class="app-shell">
+  <aside class="rail" aria-label="Examples and reading modes">
+    <h1 class="wordmark"><img src="assets/declaw-wordmark-white.png" width="1315" height="234" alt="Declaw"></h1>
+    <nav class="rail-group" aria-label="Examples" data-picker-group>
+      <h2>Examples</h2>
+      <button class="rail-button" data-case="local-vs-prod" aria-pressed="false" data-interactive disabled><svg class="icon" aria-hidden="true"><use href="#i-document"/></svg>Status update</button>
+      <button class="rail-button" data-case="verbose-explanation" aria-pressed="true" data-interactive disabled><svg class="icon" aria-hidden="true"><use href="#i-prose"/></svg>Long-form prose</button>
+      <button class="rail-button" data-case="ordered-recovery" aria-pressed="false" data-interactive disabled><svg class="icon" aria-hidden="true"><use href="#i-steps"/></svg>Recovery procedure</button>
+      <button class="rail-button" data-case="comparison-table" aria-pressed="false" data-interactive disabled><svg class="icon" aria-hidden="true"><use href="#i-compare"/></svg>Tradeoffs</button>
+    </nav>
+    <nav class="rail-group modes" aria-label="Reading modes" data-picker-group>
+      <h2>Mode</h2>
+      <!-- MODE_BUTTONS -->
+    </nav>
+    <div class="rail-footer">
+      <a class="action-link primary-link" href="https://github.com/jzlosman/declaw#install" target="_blank" rel="noreferrer">Try Declaw in Pi <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+      <a class="action-link" href="https://github.com/jzlosman/declaw" target="_blank" rel="noreferrer">View source on GitHub <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+      <a class="credits-link" href="credits.html">Credits</a>
+    </div>
+  </aside>
+  <main>
+    <header class="mobile-controls">
+      <h1 class="wordmark"><img src="assets/declaw-e.png" width="227" height="228" alt="Declaw"></h1>
+      <select id="example-select" aria-label="Example" data-interactive disabled><option value="verbose-explanation">Long-form prose</option></select>
+      <select id="mode-select" aria-label="Reading mode" data-interactive disabled><option value="plain">Paseo Plain</option></select>
+    </header>
+    <section class="workspace" id="workspace" tabindex="-1" aria-label="Answer comparison">
+      <div class="workspace-toolbar">
+        <h2 id="case-label">Long-form prose</h2>
+        <button class="diff-toggle" data-diff aria-pressed="false" aria-controls="unified-panel" data-interactive disabled><svg class="icon" aria-hidden="true"><use href="#i-diff"/></svg><span id="diff-label">Show changes</span></button>
+      </div>
+      <p class="source-attribution" id="source-attribution"><!-- INITIAL_ATTRIBUTION --></p>
+      <div class="mobile-tabs" role="tablist" aria-label="Answer">
+        <button id="tab-original" role="tab" data-side="original" aria-selected="false" aria-controls="original-panel" tabindex="-1" data-interactive disabled>Original</button>
+        <button id="tab-rewrite" role="tab" data-side="rewrite" aria-selected="true" aria-controls="rewrite-panel" data-interactive disabled>Rewrite</button>
+      </div>
+      <div class="documents">
+        <section class="document-panel original-panel" id="original-panel" aria-labelledby="original-label">
+          <header class="document-header"><h3 id="original-label">Original</h3><button class="icon-button copy-button" data-copy="original" aria-label="Copy original Markdown" title="Copy original Markdown" data-interactive disabled><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg></button></header>
+          <div class="reading-scroll" id="original-scroll" tabindex="0" aria-label="Original answer"><div class="prose" id="original-content"><!-- INITIAL_SOURCE --></div></div>
+        </section>
+        <section class="document-panel rewrite-panel" id="rewrite-panel" aria-labelledby="rewrite-label">
+          <header class="document-header"><h3 id="rewrite-label">Paseo Plain</h3><span class="unchanged-note" id="unchanged-note" hidden>Unchanged</span><button class="icon-button copy-button" data-copy="rewrite" aria-label="Copy rewritten Markdown" title="Copy rewritten Markdown" data-interactive disabled><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg></button></header>
+          <div class="reading-scroll" id="rewrite-scroll" tabindex="0" aria-label="Rewritten answer"><div class="prose" id="rewrite-content"><!-- INITIAL_REWRITE --></div></div>
+        </section>
+      </div>
+      <section id="unified-panel" class="unified-panel" aria-labelledby="unified-label" hidden>
+        <header class="document-header"><h3 id="unified-label">Changes</h3><div class="diff-legend"><span class="removed-key">Removed</span><span class="added-key">Added</span></div><span id="no-changes" class="unchanged-note" hidden>No wording changes</span></header>
+        <div class="reading-scroll" id="unified-scroll" tabindex="0" aria-label="Combined removals and additions"><div id="unified-content" class="unified-content"></div></div>
+      </section>
+    </section>
+    <div class="mobile-links">
+      <a class="action-link primary-link" href="https://github.com/jzlosman/declaw#install" target="_blank" rel="noreferrer">Try Declaw in Pi <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+      <a class="action-link" href="https://github.com/jzlosman/declaw" target="_blank" rel="noreferrer">View source on GitHub <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+    </div>
+    <a class="credits-link mobile-credits" href="credits.html">Credits</a>
+    <noscript><p class="fallback">Enable JavaScript to switch examples. <a href="evidence.html">View all examples</a>.</p></noscript>
+    <p class="fallback" id="fatal-error" hidden>Examples could not load. <a href="evidence.html">Open the static version</a>.</p>
+  </main>
+</div>
+<p class="sr-only" id="announcer" role="status" aria-live="polite" aria-atomic="true"></p>
+</body>
+</html>

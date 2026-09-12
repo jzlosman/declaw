@@ -1,0 +1,63 @@
+{
+  "name": "pi-declaw",
+  "version": "0.2.0",
+  "private": false,
+  "description": "Rewrite completed Pi answers into clearer readings without changing the original conversation.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jzlosman/declaw.git"
+  },
+  "homepage": "https://jzlosman.github.io/declaw/",
+  "bugs": {
+    "url": "https://github.com/jzlosman/declaw/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "declaw",
+    "answer-rewriting",
+    "readability"
+  ],
+  "exports": {
+    "./plugin-api": "./src/plugin-api.ts"
+  },
+  "files": [
+    "index.ts",
+    "src/",
+    "licenses/",
+    "SOURCES.md",
+    "playground/*.ts",
+    "playground/*.html",
+    "playground/*.js",
+    "playground/*.css",
+    "playground/*.json",
+    "playground/assets/",
+    "README.md",
+    "PLUGIN_GUIDE.md",
+    "GLOSSARY.md",
+    "ARCHITECTURE.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "test": "node --test $(find tests -type f -name '*.test.ts' | sort)",
+    "build:playground": "node playground/build.ts",
+    "playground": "node playground/build.ts && node playground/serve.ts"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "image": "https://jzlosman.github.io/declaw/assets/declaw-wordmark-charcoal.png"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "devDependencies": {
+    "fast-check": "^4.10.0"
+  }
+}

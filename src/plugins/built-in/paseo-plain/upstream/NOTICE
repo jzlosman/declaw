@@ -1,0 +1,16 @@
+Paseo Plain
+Copyright 2026 scowalt
+
+rewriter.ts is an unmodified copy of server/rewriter.ts.
+prompt.ts is an unmodified copy of server/prompt.ts (prompt policy 5).
+Source: https://github.com/scowalt/paseo-plain
+Commit: 35e63ee2e5f17a5bad40a8772c84fa5f21a8678f
+The upstream repository's Apache-2.0 license and original copyright notices
+are reproduced verbatim in LICENSE. Third-party prompt wording retains its
+separate MIT license below.
+
+The prompt includes wording adapted from Claudish to English v0.9.0:
+https://github.com/gvzdv/claudish-to-english/tree/bf271f95fd2c1a7d00ea545bbc6de44a1b6a1d3c
+Copyright (c) 2026 Mike Gvozdev. MIT license reproduced in Claudish-MIT.txt.
+
+The Paseo client is not included. Attribution does not imply endorsement.

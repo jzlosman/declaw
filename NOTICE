@@ -1,0 +1,30 @@
+This package includes writing prompts and code from the following projects.
+The package's original code is licensed under Apache-2.0. Third-party components
+retain their own licenses and copyright notices.
+
+Paseo Plain — Copyright 2026 scowalt.
+Repository license: Apache-2.0, retaining original Paseo notices.
+See src/plugins/built-in/paseo-plain/upstream/NOTICE and
+src/plugins/built-in/paseo-plain/upstream/LICENSE.
+The local preservation.ts adaptation changes command recognition. The upstream
+source extracts remain under the Paseo Plain plugin's upstream/ directory.
+
+Claudish to English — Copyright (c) 2026 Mike Gvozdev. MIT.
+Retained wording in the Paseo Plain prompt. See
+src/plugins/built-in/paseo-plain/upstream/Claudish-MIT.txt.
+
+I Have ADHD — Copyright (c) 2026 Ayoub Ghriss. MIT.
+See licenses/i-have-adhd-LICENSE.
+
+Squirrel Mode — Copyright (c) 2026 Thiago Matajs. MIT.
+See licenses/squirrel-mode-LICENSE.
+
+ASD-STE100 skill — Copyright (c) 2026 Dustin Yuchen Teng. MIT.
+See licenses/asd-ste100-skill-LICENSE. The official ASD standard and dictionary
+are not included, and no certified compliance is claimed.
+
+Speak Like You Eat — Copyright (c) 2026 wtfzambo. MIT.
+See licenses/speak-like-you-eat-LICENSE.
+
+All styles add the package's shared meaning-preservation rules. The sources do
+not endorse this package. Pinned revisions and adaptations: SOURCES.md.
