@@ -18,9 +18,16 @@ jobs:
           node-version: '24'
       - name: Install the Pi runtime used by the extension
         run: npm install --no-save --ignore-scripts @earendil-works/pi-coding-agent@0.85.1
-      - name: Run tests
+      - name: Run tests with coverage
         env:
           PI_PACKAGE_ROOT: ${{ github.workspace }}/node_modules/@earendil-works/pi-coding-agent
-        run: npm test
+        run: npm run coverage
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage/lcov.info
+          disable_search: true
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
       - name: Build playground
         run: npm run build:playground

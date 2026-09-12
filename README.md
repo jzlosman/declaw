@@ -6,6 +6,7 @@
 </h1>
 
 [![CI](https://github.com/jzlosman/declaw/actions/workflows/ci.yml/badge.svg)](https://github.com/jzlosman/declaw/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/jzlosman/declaw/graph/badge.svg)](https://codecov.io/gh/jzlosman/declaw)
 [![GitHub Pages](https://github.com/jzlosman/declaw/actions/workflows/pages.yml/badge.svg)](https://github.com/jzlosman/declaw/actions/workflows/pages.yml)
 [![License](https://img.shields.io/github/license/jzlosman/declaw)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/jzlosman/declaw)](https://github.com/jzlosman/declaw/stargazers)
@@ -160,6 +161,7 @@ licenses, and adaptations are documented in [SOURCES.md](SOURCES.md).
 
 ```sh
 npm test
+npm run coverage
 npm run build:playground
 ```
 
