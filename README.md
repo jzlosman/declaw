@@ -68,94 +68,79 @@ Press **Esc** to cancel. Declaw never rewrites automatically.
 | `ste`      | ASD-STE100         | [danyuchn/asd-ste100-skill](https://github.com/danyuchn/asd-ste100-skill)     |
 | `slye`     | Speak Like You Eat | [wtfzambo/speak-like-you-eat](https://github.com/wtfzambo/speak-like-you-eat) |
 
-The six styles are shipped as built-in plugins. You do not install separate packages
-for them. Additional styles can be installed as independent Pi packages; see
-[`PLUGIN_GUIDE.md`](PLUGIN_GUIDE.md) for an agent-first recipe.
+All six styles come with Declaw. You can install more as separate Pi packages or
+build your own with [`PLUGIN_GUIDE.md`](PLUGIN_GUIDE.md), which includes instructions
+for coding agents.
 
-Some styles adapt rules from their sources. They are not complete ports or official
-certifications. Source attribution does not imply endorsement.
+Some styles borrow rules from the originals rather than porting them in full.
+Attribution doesn't imply endorsement or certification.
 
 ## Plugin architecture
 
-Declaw owns the preservation policy, model gateway, Pi session boundary, and display-only
-projection. A plugin owns only its style instructions and protected-answer envelope.
-Plugin IDs are stable, styles are namespaced, collisions are rejected, and user status
-is persisted independently of plugin code. Disabled plugins remain visible in
-`/declaw list` but are unavailable to `/declaw style`.
+Declaw protects the answer, calls the model, and displays the rewrite without adding
+it to the agent's context. Plugins supply style instructions and the format used to
+send the protected answer to the model.
 
-See the small, functioning [`declaw-style-pirate` example plugin](https://github.com/jzlosman/declaw-style-pirate)
-for a complete third-party package built against this boundary.
+Plugin IDs stay fixed, and each plugin has its own namespace for styles. Declaw rejects
+ID collisions and saves your enable/disable choices separately from plugin code.
+Disabled plugins still appear in `/declaw list`, but you can't pick them in `/declaw style`.
 
-Read [`GLOSSARY.md`](GLOSSARY.md) for the domain vocabulary and
-[`ARCHITECTURE.md`](ARCHITECTURE.md) for ports, adapters, actions, and effects.
+The [`declaw-style-pirate` example](https://github.com/jzlosman/declaw-style-pirate)
+is a small, working third-party plugin. For the internals, see
+[`ARCHITECTURE.md`](ARCHITECTURE.md) and [`GLOSSARY.md`](GLOSSARY.md).
 
 ## What Declaw preserves
 
-Declaw protects exact text before the model sees the answer. This includes:
+Before sending an answer to the model, Declaw protects commands, paths, links, code,
+quotations, numbers, names, and other technical text. It rejects rewrites that drop,
+duplicate, reorder, or invent protected text.
 
-- commands
-- paths and links
-- code
-- quotations
-- numbers
-- names and other technical text
+It also checks for changes in meaning: `may` must not become `will`, an action the
+assistant offers to take must not become an instruction to you, and prerequisites
+must not become broader. Recommendations must keep their reasons, and useful tables
+must stay tables.
 
-It rejects a rewrite when protected text is missing, duplicated, reordered, or invented.
-It also preserves meaning rules such as:
-
-- `may` must not become `will`;
-- a proposed assistant action must not become a user instruction;
-- prerequisites must not become broader;
-- recommendation reasons must remain attached; and
-- useful tables must remain tables.
-
-These checks reduce errors. They cannot prove that a model preserved every meaning.
-Read important rewrites against the original.
+These checks can miss changes in meaning. Compare important rewrites with the original.
 
 ## Context isolation, privacy, and limits
 
-Declaw is a display projection, not a second conversation. Rewritten text is never
-made available to the agent as context: it is excluded from future prompts, tool
-planning, skill and prompt evaluation, and session compaction. This prevents a
-rewrite's changed wording from influencing later work.
+Rewrites are for you to read. The agent never gets them as context for future prompts,
+tool planning, skill or prompt evaluation, or session compaction, so the new wording
+can't influence its later work. Pi saves rewrites as display-only session entries;
+they're still visible after reload.
 
-Each rewrite request sends only one protected answer to the selected rewrite model.
-It does not send conversation history, earlier requests, project files, tools, or
-reasoning.
+The rewrite model receives only the one protected answer. Declaw doesn't send it
+conversation history, earlier requests, project files, tools, or reasoning.
 
-Declaw uses its own model and style settings. It does not change the main agent's
-model or thinking level. The default rewrite model is:
+Declaw has its own model and style settings. Your main agent's model and thinking
+level stay unchanged. The default rewrite model is:
 
 ```text
 openai-codex/gpt-5.6-luna · low thinking
 ```
 
-Provider charges apply. You must be authenticated to the selected provider.
-Provider retries are disabled. Requests time out after 60 seconds.
+You need to be signed in to the selected provider, and provider charges apply.
+Requests time out after 60 seconds, with provider retries disabled.
 
-Declaw requires Pi's terminal UI. It does not rewrite incomplete answers, tool-call
-results, answers over 32,000 characters, or overlapping requests.
-
-Rewrites are saved in the Pi session file as display-only entries. They remain visible
-after reload, but Pi does not send them back to the agent or include them in compaction.
+Declaw requires Pi's terminal UI and handles one rewrite at a time. It won't rewrite
+incomplete answers, tool-call results, or answers over 32,000 characters.
 
 ## Playground
 
-The [hosted playground](https://jzlosman.github.io/declaw/) is a static demonstration
-using saved outputs. It makes no browser model calls and collects no visitor credentials
-or analytics.
+The [hosted playground](https://jzlosman.github.io/declaw/) shows saved rewrites.
+It makes no model calls in your browser and collects no credentials or analytics.
 
 ```sh
 npm run build:playground
 open dist/playground/index.html
 ```
 
-The public snapshot contains reviewed historical recordings from the earlier
-five-style demo. It is labeled as historical and does not include SLYE output.
-The site is live; do not treat the examples as a guarantee of semantic fidelity.
+The examples were reviewed but come from the older five-style demo. They're labeled
+as historical and don't include SLYE. The site is live, but the examples aren't a
+guarantee that rewrites always preserve meaning.
 
-The private generation and review lab is kept outside this repository. Source pins,
-licenses, and adaptations are documented in [SOURCES.md](SOURCES.md).
+The private lab for generating and reviewing examples lives outside this repository.
+See [SOURCES.md](SOURCES.md) for pinned source versions, licenses, and adaptations.
 
 ## Development
 
@@ -165,12 +150,11 @@ npm run coverage
 npm run build:playground
 ```
 
-Tests use synthetic answers and fake model responses. They do not make live model calls.
+Tests use synthetic answers and fake model responses, with no live model calls.
 
-The GitHub Pages workflow is active at `.github/workflows/pages.yml`. It builds only
-`dist/playground/`. The public repository is
-[jzlosman/declaw](https://github.com/jzlosman/declaw), and Pages is available at
-[jzlosman.github.io/declaw](https://jzlosman.github.io/declaw/).
+The active GitHub Pages workflow, `.github/workflows/pages.yml`, builds only
+`dist/playground/` from [jzlosman/declaw](https://github.com/jzlosman/declaw) and publishes
+to [jzlosman.github.io/declaw](https://jzlosman.github.io/declaw/).
 
 ## License
 
