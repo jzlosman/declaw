@@ -7,7 +7,6 @@ import { latestAnswer } from "./pi.ts";
 import { executeRewrite, REWRITE_TIMEOUT_MS } from "../application/rewrite.ts";
 import { chooseModel, createRewriteGateway, supportsLowThinking } from "./model.ts";
 import { readModelChoice, readPluginStatuses, readStyleChoice, savePluginStatuses, saveStyleChoice } from "./settings.ts";
-import { isStyleId } from "../domain/styles.ts";
 
 export interface DeclawCommandDependencies {
   readonly pi: ExtensionAPI;
@@ -48,11 +47,12 @@ export function createDeclawCommand({ pi, catalog, settingsPath, stylePath, plug
 
   const cancel = () => active?.abort();
   const command: Parameters<ExtensionAPI["registerCommand"]>[1] = {
-    description: "Rewrite the latest answer; /declaw style selects a style, /declaw model selects its model",
+    description: "Rewrite the latest answer or supplied text; /declaw style selects a style, /declaw model selects its model",
     getArgumentCompletions: (prefix: string) => {
       const items = [
         { value: "model", label: "model", description: "Choose the rewrite model (low thinking)" },
         { value: "style", label: "style", description: "Choose the saved rewrite style" },
+        { value: "styles", label: "styles", description: "Alias for style: choose the saved rewrite style" },
         { value: "list", label: "list", description: "List installed Declaw plugins and statuses" },
         { value: "manage", label: "manage", description: "Enable or disable Declaw plugins" },
         ...catalog.activeStyleIds().map((id) => ({ value: id, label: id, description: `Rewrite once with ${catalog.get(id)!.style.name}` })),
@@ -65,10 +65,6 @@ export function createDeclawCommand({ pi, catalog, settingsPath, stylePath, plug
         return;
       }
       const command = args.trim();
-      if (command && command !== "model" && command !== "style" && command !== "list" && command !== "manage" && !isStyleId(command)) {
-        ctx.ui.notify("Use /declaw to rewrite, /declaw style, /declaw model, /declaw list, or /declaw manage.", "info");
-        return;
-      }
       if (active || !ctx.isIdle()) {
         ctx.ui.notify("Wait for the current request to finish, then use /declaw.", "info");
         return;
@@ -76,6 +72,7 @@ export function createDeclawCommand({ pi, catalog, settingsPath, stylePath, plug
       const controller = new AbortController();
       active = controller;
       const sessionId = ctx.sessionManager.getSessionId();
+      const invocationLeafId = ctx.sessionManager.getLeafId();
       let timedOut = false;
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
@@ -108,7 +105,7 @@ export function createDeclawCommand({ pi, catalog, settingsPath, stylePath, plug
           if (!controller.signal.aborted) ctx.ui.notify(`${selected.plugin.name} is now ${status}.`, "info");
           return;
         }
-        if (command === "style") {
+        if (command === "style" || command === "styles") {
           const leafId = ctx.sessionManager.getLeafId();
           const current = await readStyleChoice(stylePath, catalog).catch(() => undefined);
           if (controller.signal.aborted) return;
@@ -123,16 +120,26 @@ export function createDeclawCommand({ pi, catalog, settingsPath, stylePath, plug
           if (!controller.signal.aborted) ctx.ui.notify(`/declaw now uses ${catalog.get(style)!.style.name}. Model settings are unchanged.`, "info");
           return;
         }
-        const source = latestAnswer(ctx.sessionManager.getBranch());
+        // Match installed IDs, not merely strings with valid ID syntax. Disabled
+        // styles remain reserved so invoking one reports its unavailable status.
+        const input = args.trimStart();
+        // Consume one separator after a style ID (CRLF counts as one), leaving
+        // any source indentation and subsequent line breaks untouched.
+        const prefix = input.match(/^(\S+)(?:\r\n|\s)?/u);
+        const requestedStyle = prefix && catalog.get(prefix[1], { includeDisabled: true })?.style.id;
+        const suppliedText = prefix && requestedStyle ? input.slice(prefix[0].length) : args;
+        const source = suppliedText.trim()
+          ? { id: null, text: suppliedText }
+          : latestAnswer(ctx.sessionManager.getBranch());
         if (!source) {
           ctx.ui.notify("No completed assistant answer is available to rewrite.", "warning");
           return;
         }
         if (source.text.length > MAX_INPUT_CHARS) {
-          ctx.ui.notify("This answer is too long for /declaw (32,000 characters maximum).", "warning");
+          ctx.ui.notify("This source is too long for /declaw (32,000 characters maximum).", "warning");
           return;
         }
-        const style = isStyleId(command) && command ? command : await readStyleChoice(stylePath, catalog);
+        const style = requestedStyle ?? await readStyleChoice(stylePath, catalog);
         const selected = catalog.get(style);
         const styleRecord = selected && { ...selected, style: { ...selected.style } };
         if (!styleRecord) {
@@ -162,7 +169,9 @@ export function createDeclawCommand({ pi, catalog, settingsPath, stylePath, plug
           const work = executeRewrite(source, controller.signal, {
             ...gateway,
             isCurrent: (candidate) => ctx.sessionManager.getSessionId() === sessionId && ctx.isIdle() &&
-              latestAnswer(ctx.sessionManager.getBranch())?.id === candidate.id,
+              (candidate.id === null
+                ? ctx.sessionManager.getLeafId() === invocationLeafId
+                : latestAnswer(ctx.sessionManager.getBranch())?.id === candidate.id),
             publish: ({ sourceEntryId, text }) => pi.appendEntry<PlainEntry>(ENTRY_TYPE, {
               version: POLICY_VERSION, sourceEntryId, text,
               model: `${model.provider}/${model.id}`, thinkingLevel: REWRITE_THINKING,

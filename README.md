@@ -41,18 +41,37 @@ Then run `/reload` in Pi and use `/declaw`.
 ## Use
 
 ```text
-/declaw              Rewrite the latest answer with your saved style.
-/declaw style        Choose and save a style.
-/declaw <style-id>   Rewrite once with a specific style.
+/declaw              Rewrite the latest completed answer with your saved style.
+/declaw <text>       Rewrite typed or pasted text with your saved style and model.
+/declaw style        Choose and save a style (alias: /declaw styles).
+/declaw <style-id>    Rewrite the latest answer once with an installed style.
+/declaw <style-id> <text>  Rewrite supplied text once with an installed style.
 /declaw model        Choose the separate rewrite model.
-/declaw list        List installed styles/plugins and active status.
-/declaw manage      Enable or disable a style plugin.
+/declaw list         List installed styles/plugins and active status.
+/declaw manage       Enable or disable a style plugin.
 ```
 
-Example:
+Management commands require an exact match, ignoring surrounding whitespace:
+`/declaw list these items` rewrites “list these items” rather than listing plugins.
+An installed style ID can stand alone or prefix supplied text. For example,
+`/declaw pirate/pirate Ahoy there` uses Pirate for that rewrite without changing
+your saved style (requires the Pirate plugin). Unknown prefixes remain part of the
+source text. Disabled style IDs remain reserved and report that the style is unavailable.
+
+Supplied text needs no prior assistant answer. Declaw passes the text received from
+Pi to the plugin without trimming it, up to 32,000 characters. When a style prefix
+is present, Declaw removes the ID and one whitespace separator (CRLF counts as one),
+preserving any remaining source indentation and line breaks. Pi itself trims outer
+whitespace on submission; internal spacing and line breaks survive. Declaw does not
+add the source or reading to future agent context. Empty or whitespace-only arguments use
+the latest completed answer, including after a style ID.
+
+Examples:
 
 ```text
 /declaw slye
+/declaw The service uses a retry interval of 25 seconds.
+/declaw terse The service uses a retry interval of 25 seconds.
 ```
 
 Press **Esc** to cancel. Declaw never rewrites automatically.

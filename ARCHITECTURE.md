@@ -2,8 +2,8 @@
 
 ## Bounded context
 
-Declaw owns the **Answer Rewriting** bounded context. Its input is the completed
-assistant answer. It does not own the main agent conversation, provider credentials,
+Declaw owns the **Answer Rewriting** bounded context. Its input is a completed
+assistant answer or user-supplied text. It does not own the main agent conversation, provider credentials,
 model selection, Pi navigation, or browser-generated output.
 
 ```text
@@ -33,10 +33,13 @@ The files map to this boundary as follows:
   prompt, provenance, and payload adapter. `src/plugins/built-in/index.ts` only aggregates them.
 - `src/application/rewrite.ts`: single-call orchestration and explicit publication ports.
 - `src/application/cancellation.ts`: stop waiting while observing late provider rejections.
+- `src/adapters/command.ts`: exact command routing, source selection, Pi source-currency
+  checks, deadline, and display publication through application ports.
 - `src/adapters/pi.ts`: Pi message/session/request translation.
 - `src/adapters/model.ts`: Pi model/auth/provider translation and model selection.
 - `src/adapters/settings.ts`: filesystem preference adapter.
-- `index.ts`: composition root, lifecycle wiring, command registration, and display projection.
+- `src/extension.ts`: composition root, lifecycle wiring, command registration, and display projection.
+- `index.ts`: package entrypoint.
 - `playground/`: static projection of saved recordings; never a model adapter.
 
 ## Actions and effects
@@ -44,14 +47,15 @@ The files map to this boundary as follows:
 | Action | Reads | Effects | Success projection |
 |---|---|---|---|
 | Rewrite latest answer | current branch, style, model settings | one isolated model call, then append custom entry | display-only final reading |
+| Rewrite supplied text | command text, style, model settings | one isolated model call, then append custom entry | display-only final reading |
 | Choose style | style catalog, current preference | preference file write | future rewrite default |
 | Choose model | Pi model registry/auth | preference file write | future rewrite provider |
 | List plugins | catalog, status file | none | status text |
 | Manage plugins | catalog, status file | status file write | active/disabled catalog |
 
-The domain checks input bounds and snapshots the original answer. The application
+The domain checks input bounds and snapshots the raw source. The application
 requests one transformation using the selected model and style. The plugin's payload
-formatter receives the original, unmasked answer. Short host guidance is advisory;
+formatter receives the original, unmasked source. Short host guidance is advisory;
 the selected style owns what to change, omit, or add. There is no editor, semantic
 judge, token masking, or exact-text rejection in the runtime.
 
@@ -60,6 +64,33 @@ adapter owns a 60-second deadline. Provider retries are disabled. Complete, none
 bounded output that differs from the source can become a display entry, regardless
 of whether it follows Declaw's default preferences. The original answer and future
 main-agent context remain untouched.
+
+## Source selection and identity
+
+The command adapter reserves exact `model`, `style`, `styles` (a `style` alias),
+`list`, and `manage` after trimming for comparison. An installed style ID as the
+first whitespace-delimited token selects a one-off style. The adapter removes that
+ID and one separator (CRLF counts as one); the remainder is supplied text, with
+formatting intact. Empty or whitespace-only remainders select the latest completed
+assistant answer. This override never writes the saved style preference.
+
+Disabled style IDs stay reserved so they cannot silently become source text. ID
+syntax alone does not reserve a word. Without an installed style prefix, the whole
+nonempty argument is supplied text as received from Pi, using the saved style.
+Empty arguments select the latest completed assistant answer.
+
+Both routes call the same `executeRewrite` action with a framework-free
+`RewriteSource`. Its `id` is the answer's identity or `null` for supplied text;
+publication preserves that distinction in `sourceEntryId`. No synthetic assistant
+entry or additional history read is needed for supplied text. Existing display
+entries with string IDs remain valid; rendering does not depend on source identity.
+
+The adapter implements `isCurrent`: both routes require the original session and
+an idle agent. Answer rewrites require the same latest-answer ID. Supplied-text
+rewrites require the same branch leaf captured before any asynchronous work.
+Lifecycle cancellation remains wired in the composition root. The application
+checks this port before the provider call and before publication; it has no Pi
+session, command syntax, or filesystem dependencies.
 
 ## Plugin lifecycle
 

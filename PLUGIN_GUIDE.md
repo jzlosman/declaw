@@ -106,8 +106,10 @@ stable process-wide bridge, so extension load order does not change the catalog.
   `Prompt from` only with a real `https://` source URL.
 - `instructions` define the transformation. The selected style takes precedence over
   advisory host guidance and can intentionally change, omit, or add content.
-- `buildUserPayload` receives the original, unmasked answer. Format it for your style's
-  single model request; there is no host-owned editor envelope.
+- `buildUserPayload` receives the original, unmasked rewrite source: a completed
+  assistant answer or text supplied through `/declaw <text>`. Both use the same
+  string-to-string API; existing payload keys such as `assistantMessage` need no
+  change. Format the source for one model request; there is no host-owned editor envelope.
 - Do not import `@earendil-works/pi-coding-agent`, `@earendil-works/pi-ai`, Node
   filesystem APIs, network clients, clocks, randomness, or environment variables.
 - Plugin code must not execute source commands or add tools. What the generated text

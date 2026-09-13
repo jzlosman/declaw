@@ -4,24 +4,25 @@ import { abortable } from "./cancellation.ts";
 /** One provider call, with the overall clock owned by adapters. */
 export const REWRITE_TIMEOUT_MS = 60_000;
 
-export interface SourceAnswer {
-  readonly id: string;
+export interface RewriteSource {
+  /** A session answer identity, or null for user-supplied text. */
+  readonly id: string | null;
   readonly text: string;
 }
 
 export interface PublishedRewrite {
-  readonly sourceEntryId: string;
+  readonly sourceEntryId: string | null;
   readonly text: string;
 }
 
 export interface RewriteExecutionPorts {
   rewrite: (source: string, signal: AbortSignal) => Promise<string>;
-  isCurrent: (source: SourceAnswer) => boolean;
+  isCurrent: (source: RewriteSource) => boolean;
   publish: (rewrite: PublishedRewrite) => void;
 }
 
 export type RewriteExecutionResult =
-  | { readonly kind: "accepted"; readonly sourceEntryId: string; readonly text: string }
+  | { readonly kind: "accepted"; readonly sourceEntryId: string | null; readonly text: string }
   | RejectedRewrite
   | { readonly kind: "failed" }
   | { readonly kind: "cancelled" }
@@ -31,11 +32,11 @@ type Interrupted = Extract<RewriteExecutionResult, { kind: "cancelled" | "stale"
 
 /** Rewrite once, check operational bounds, then publish while the source is current. */
 export async function executeRewrite(
-  source: SourceAnswer,
+  source: RewriteSource,
   signal: AbortSignal,
   ports: RewriteExecutionPorts,
 ): Promise<RewriteExecutionResult> {
-  const snapshot: SourceAnswer = Object.freeze({ id: source.id, text: source.text });
+  const snapshot: RewriteSource = Object.freeze({ id: source.id, text: source.text });
   const interrupted = (): Interrupted | undefined => signal.aborted
     ? { kind: "cancelled" }
     : !ports.isCurrent(snapshot) ? { kind: "stale" } : undefined;
