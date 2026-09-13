@@ -264,7 +264,7 @@ test('real command calls once with the raw answer and persists its result outsid
 });
 
 test('guards prevent model calls in busy, non-TUI, no-answer, no-auth, no-model and oversize states', async (t) => {
-  for (const scenario of ['busy', 'rpc', 'no-answer', 'failed-answer', 'no-auth', 'no-model', 'oversize', 'arguments']) {
+  for (const scenario of ['busy', 'rpc', 'no-answer', 'failed-answer', 'no-auth', 'no-model', 'oversize']) {
     await t.test(scenario, async (t) => {
       const h = await harness(t, scenario !== 'no-answer');
       if (scenario === 'busy') h.idle = false;
@@ -273,24 +273,131 @@ test('guards prevent model calls in busy, non-TUI, no-answer, no-auth, no-model 
       if (scenario === 'no-model') h.rewriteModel = undefined;
       if (scenario === 'failed-answer') h.sm.appendMessage(answer('Partial', { stopReason: 'length' }));
       if (scenario === 'oversize') h.sm.appendMessage(answer('x'.repeat(MAX_INPUT_CHARS + 1)));
-      await h.run(scenario === 'arguments' ? 'unexpected' : '');
+      await h.run();
       assert.equal(h.calls.length, 0);
       assert.equal(h.entries().length, 0);
     });
   }
 });
 
-test('non-terminal UI and malformed commands receive actionable notices without entering the rewrite flow', async (t) => {
+test('non-terminal UI receives an actionable notice without reserving the next request', async (t) => {
   const h = await harness(t);
   h.ctx.mode = 'rpc';
   await h.run();
   assert.deepEqual(h.notices, ["/declaw currently requires Pi's terminal UI."]);
   h.ctx.mode = 'tui';
-  await h.run('plain extra');
-  assert.equal(h.notices.at(-1), 'Use /declaw to rewrite, /declaw style, /declaw model, /declaw list, or /declaw manage.');
   assert.equal(h.calls.length + h.authCalls.length + h.findCalls.length + h.picks.length + h.entries().length, 0);
   await h.run('plain');
-  assert.equal(h.entries().length, 1, 'rejected commands do not reserve the next request');
+  assert.equal(h.entries().length, 1, 'rejected UI mode does not reserve the next request');
+});
+
+test('supplied text uses saved preferences, preserves formatting and stays out of agent context', async (t) => {
+  for (const seeded of [false, true]) {
+    const h = await harness(t, seeded);
+    await saveStyleChoice(h.stylePath, 'terse');
+    const source = '  The service uses `config.json`.\r\n\r\n```ts\r\n  résumé();\r\n```\r\n  ';
+    const before = structuredClone(h.sm.buildSessionContext().messages);
+    h.complete = async () => answer('A supplied-text reading.');
+    await h.run(source);
+    assert.equal(h.calls.length, 1);
+    assert.equal(requestTarget(h.calls[0][1]), source);
+    assert.equal(h.entries().length, 1);
+    assert.equal(h.entries()[0].data.sourceEntryId, null);
+    assert.equal(h.entries()[0].data.style, 'terse');
+    assert.equal(h.entries()[0].data.model, `${model.provider}/${model.id}`);
+    assert.deepEqual(h.sm.buildSessionContext().messages, before);
+    const restored = reload(h.sm);
+    assert.deepEqual(restored.buildSessionContext().messages, before);
+    assert.equal(restored.getEntries().find((e: any) => e.customType === ENTRY_TYPE).data.sourceEntryId, null);
+  }
+});
+
+test('management commands require exact matches; unknown prefixes remain source text', async (t) => {
+  const h = await harness(t, false);
+  h.complete = async () => answer('An alternate reading.');
+  for (const source of ['unexpected', 'missing/style', 'missing/style extra', 'list these items', 'styles of writing']) {
+    await h.run(source);
+    assert.equal(requestTarget(h.calls.at(-1)[1]), source);
+    assert.equal(h.entries().at(-1).data.sourceEntryId, null);
+  }
+  assert.equal(h.calls.length, 5);
+  await h.run(' list ');
+  assert.match(h.notices.at(-1), /active/);
+  await h.run(' styles ');
+  assert.equal(h.picks.at(-1)[0], 'Declaw rewrite style');
+  assert.equal(h.calls.length, 5);
+});
+
+test('installed style prefixes rewrite supplied text without changing the saved preference', async (t) => {
+  t.after(clearDeclawPluginBridgeForTests);
+  registerDeclawPlugin({
+    apiVersion: 1, id: 'pirate', name: 'Pirate', version: '1.0.0',
+    styles: [{ id: 'pirate/pirate', name: 'Pirate', relationship: 'Local preset',
+      instructions: 'Write like a pirate.', buildUserPayload: raw => JSON.stringify({ assistantMessage: raw }) }],
+  });
+  const h = await harness(t, false);
+  await saveStyleChoice(h.stylePath, 'adhd');
+  h.complete = async () => answer('A different reading.');
+  for (const [args, style, source] of [
+    ['plain extra', 'plain', 'extra'],
+    ['pirate/pirate Ahoy there', 'pirate/pirate', 'Ahoy there'],
+    ['  pirate/pirate   indented\r\n```ts\r\n  résumé();\r\n```\r\n  ', 'pirate/pirate', '  indented\r\n```ts\r\n  résumé();\r\n```\r\n  '],
+    ['terse\nline one\nline two', 'terse', 'line one\nline two'],
+    ['terse\r\nline one', 'terse', 'line one'],
+    ['terse\ttext', 'terse', 'text'],
+  ]) {
+    await h.run(args);
+    assert.equal(requestTarget(h.calls.at(-1)[1]), source);
+    assert.equal(h.entries().at(-1).data.style, style);
+    assert.equal(h.entries().at(-1).data.sourceEntryId, null);
+    assert.equal(await readStyleChoice(h.stylePath), 'adhd');
+  }
+  assert.equal(h.calls.length, 6);
+  assert.equal(h.entries().length, 6);
+  assert.deepEqual(h.sm.buildSessionContext().messages, []);
+  const sourceId = h.sm.appendMessage(answer());
+  await h.run('pirate/pirate \r\n\t');
+  assert.equal(h.entries().at(-1).data.sourceEntryId, sourceId);
+  assert.equal(h.entries().at(-1).data.style, 'pirate/pirate');
+  await h.run('ordinary supplied text');
+  assert.equal(h.entries().at(-1).data.style, 'adhd');
+});
+
+test('whitespace-only arguments default to the latest answer', async (t) => {
+  const h = await harness(t);
+  const source = latestAnswer(h.sm.getBranch())!;
+  await h.run(' \r\n\t ');
+  assert.equal(requestTarget(h.calls[0][1]), source.text);
+  assert.equal(h.entries()[0].data.sourceEntryId, source.id);
+});
+
+test('supplied text obeys input limits without requiring an assistant answer', async (t) => {
+  const h = await harness(t, false);
+  h.complete = async () => answer('A bounded reading.');
+  await h.run('x'.repeat(MAX_INPUT_CHARS + 1));
+  assert.equal(h.calls.length, 0);
+  assert.match(h.notices.at(-1), /32,000/);
+  await h.run('x'.repeat(MAX_INPUT_CHARS));
+  assert.equal(h.entries().length, 1);
+});
+
+test('supplied-text results cannot publish after session, branch, busy or cancellation changes', async (t) => {
+  for (const change of ['session', 'branch', 'busy', 'cancel']) {
+    await t.test(change, async (t) => {
+      const h = await harness(t, false);
+      const completion = deferred<any>();
+      h.complete = () => completion.promise;
+      const running = h.run('The service uses supplied text.');
+      await h.waitForCall();
+      if (change === 'session') h.ctx.sessionManager = SessionManager.inMemory(cwd);
+      if (change === 'branch') h.sm.appendMessage({ role: 'user', content: 'New branch leaf', timestamp: 2 });
+      if (change === 'busy') h.idle = false;
+      if (change === 'cancel') await h.emit('session_tree');
+      completion.resolve(answer('A late reading.'));
+      await running;
+      assert.equal(h.entries().length, 0);
+    });
+  }
 });
 
 test('input and output limits are inclusive operational bounds, not technical-content checks', async (t) => {
@@ -990,6 +1097,13 @@ test('declaw alias lists plugins and manage persists disabled status', async (t)
   });
   await declaw.handler('style', h.ctx);
   assert.doesNotMatch(h.picks.at(-1)[1].join(' '), /Paseo Plain/);
+  h.sm.appendMessage(answer());
+  await h.run('plain');
+  assert.match(h.notices.at(-1), /style plain is unavailable or disabled/);
+  await saveStyleChoice(h.stylePath, 'terse');
+  await h.run('plain supplied text');
+  assert.match(h.notices.at(-1), /style plain is unavailable or disabled/);
+  assert.equal(h.calls.length, 0, 'a disabled style ID or prefix must not become supplied text');
 });
 
 test('plugin management can repair an invalid plugin status file', async (t) => {
@@ -1016,7 +1130,7 @@ test('legacy entries retain Plain English rendering and completions expose all n
     assert.match(rendered, /display only/);
   }
   const complete = h.ext.commands.get('declaw').getArgumentCompletions;
-  assert.deepEqual(complete('').map((item: any) => item.value), ['model', 'style', 'list', 'manage', ...STYLE_IDS]);
+  assert.deepEqual(complete('').map((item: any) => item.value), ['model', 'style', 'styles', 'list', 'manage', ...STYLE_IDS]);
   assert.deepEqual(complete('sl').map((item: any) => item.value), ['slye']);
   assert.equal(complete('unknown'), null);
 });

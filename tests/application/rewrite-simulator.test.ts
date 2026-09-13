@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fc from "fast-check";
-import { executeRewrite, type SourceAnswer } from "../../src/application/rewrite.ts";
+import { executeRewrite, type RewriteSource } from "../../src/application/rewrite.ts";
 
-const source: SourceAnswer = { id: "answer-1", text: "Use `config.json` before continuing." };
+const source: RewriteSource = { id: "answer-1", text: "Use `config.json` before continuing." };
 const events = fc.array(fc.constantFrom("invalidate", "cancel", "noop"), { maxLength: 12 });
 const deferred = <T>() => {
   let resolve!: (value: T) => void;

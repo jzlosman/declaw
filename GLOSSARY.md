@@ -1,23 +1,33 @@
 # Declaw glossary
 
 Declaw's bounded context is **Answer Rewriting**: turning a completed assistant
-answer into an alternate reading without changing the conversation or pretending
-that shorter means better.
+answer or user-supplied text into an alternate reading without changing the
+conversation or pretending that shorter means better.
 
 ## Domain language
 
-- **Source answer** — the immutable completed assistant answer selected for rewriting.
-- **Source entry ID** — Pi identity of the source answer. It prevents a late result
-  from being attached to a different branch or newer answer.
+- **Rewrite source** — immutable text selected for one rewrite: a source answer or
+  supplied text.
+- **Source answer** — the completed assistant answer selected from the current branch.
+- **Supplied text** — typed or pasted command input, used instead of a source answer.
+  It needs no assistant message and is not inserted into the conversation.
+- **Source entry ID** — identity of a source answer; `null` for supplied text.
+  Supplied-text results never claim an assistant message as their source.
+- **Source currency** — permission to publish in the originating session while the
+  agent is idle. A source answer must still be the latest answer; supplied text
+  requires the invocation's branch leaf to remain unchanged. Lifecycle cancellation
+  also prevents publication.
 - **Reading style** — a named presentation policy, such as Terse or SLYE.
+- **One-off style** — an installed style selected for a single rewrite by its ID,
+  optionally followed by supplied text. It does not change the saved preference.
 - **Style definition** — a style's stable ID, label, provenance, instructions, and
-  original-answer payload formatter.
+  raw-source payload formatter.
 - **Style plugin** — a trusted package contribution containing one or more definitions.
 - **Style catalog** — the host-owned registry that validates IDs, namespaces,
   collisions, provenance, and active/disabled status.
 - **Style snapshot** — style label, plugin ID, and plugin version saved with a
   display entry so historical entries remain readable after plugin removal.
-- **Rewrite request** — original answer formatted by the plugin, with advisory host
+- **Rewrite request** — raw source formatted by the plugin, with advisory host
   guidance, selected style instructions, and selected model.
 - **Rewrite attempt** — one isolated model call, without retries or a mandatory editor.
 - **Plugin-owned transformation** — the style chooses how to change content; host
@@ -29,7 +39,7 @@ that shorter means better.
 
 ## Application language
 
-- **Action** — an intentional user request: `RewriteLatestAnswer`, `ChooseStyle`,
+- **Action** — an intentional user request: `RewriteLatestAnswer`, `RewriteSuppliedText`, `ChooseStyle`,
   `ChooseModel`, `ListPlugins`, or `ManagePlugins`.
 - **Port** — an application-owned capability required from the outside world:
   answer reading, model completion, preferences, clock/identity, and display writing.

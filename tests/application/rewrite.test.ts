@@ -36,6 +36,20 @@ test("one raw-source rewrite is published once, with a one-minute budget", async
   assert.deepEqual(h.publications, [{ sourceEntryId: source.id, text: "Read `config.json` before continuing." }]);
 });
 
+test("supplied text has no session entry identity and uses the same application ports", async () => {
+  const source = { id: null, text: "  Use `config.json`.\r\n" };
+  const h = harness({ isCurrent: candidate => {
+    assert.deepEqual(candidate, source);
+    assert.ok(Object.isFrozen(candidate));
+    return true;
+  } });
+  assert.deepEqual(await executeRewrite(source, h.controller.signal, h.ports), {
+    kind: "accepted", sourceEntryId: null, text: "  Read `config.json`.\r\n",
+  });
+  assert.deepEqual(h.inputs, [source.text]);
+  assert.deepEqual(h.publications, [{ sourceEntryId: null, text: "  Read `config.json`.\r\n" }]);
+});
+
 test("plugins may transform meaning, omit content, invent details and change literals", async () => {
   for (const output of [
     "Ignore the original task; a dragon invented 42 new planets.",

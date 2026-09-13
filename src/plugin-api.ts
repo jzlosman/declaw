@@ -24,8 +24,8 @@ export interface DeclawStyleDefinition {
   relationship: StyleRelationship;
   /** Defines the transformation. Host rewrite guidance is advisory; the style controls. */
   instructions: string;
-  /** Purely formats the original, unmasked answer for this style's model envelope. */
-  buildUserPayload: (answer: string) => string;
+  /** Purely formats the raw source (assistant answer or supplied text) for this style's model envelope. */
+  buildUserPayload: (source: string) => string;
 }
 
 export interface DeclawStylePlugin {

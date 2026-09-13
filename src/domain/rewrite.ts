@@ -10,7 +10,8 @@ export const MAX_OUTPUT_CHARS = 64_000;
 
 export interface PlainEntry {
   version: typeof POLICY_VERSION;
-  sourceEntryId: string;
+  /** Null identifies supplied text, which is not an assistant session entry. */
+  sourceEntryId: string | null;
   text: string;
   model: string;
   thinkingLevel?: typeof REWRITE_THINKING;
