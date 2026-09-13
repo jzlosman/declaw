@@ -155,6 +155,67 @@ test("source is snapshotted and publication is synchronous after the currency ch
   assert.equal(lifecycle.filter(event => event === "publish").length, 1);
 });
 
+test("source bounds stop before invoking the rewrite port or publishing", async () => {
+  for (const [text, reason] of [
+    ["\r\n\t", "empty-source"],
+    [` ${"x".repeat(MAX_INPUT_CHARS)}`, "source-too-long"],
+  ]) {
+    const lifecycle: string[] = [];
+    const h = harness({
+      isCurrent: candidate => { lifecycle.push("current"); assert.equal(candidate.text, text); return true; },
+      rewrite: async () => { lifecycle.push("rewrite"); throw new Error("must not call provider"); },
+      publish: () => { lifecycle.push("publish"); },
+    });
+    assert.deepEqual(await h.run({ id: source.id, text }), { kind: "rejected", reason });
+    assert.deepEqual(lifecycle, ["current"]);
+  }
+});
+
+test("interruption takes precedence over unusable late output without publishing", async () => {
+  for (const output of ["", source.text, "x".repeat(MAX_OUTPUT_CHARS + 1)]) {
+    for (const cancel of [false, true]) {
+      const work = deferred<string>();
+      const lifecycle: string[] = [];
+      let current = true;
+      const h = harness({
+        isCurrent: () => { lifecycle.push("current"); return current; },
+        rewrite: async () => { lifecycle.push("rewrite"); return work.promise; },
+        publish: () => { lifecycle.push("publish"); },
+      });
+      const run = h.run();
+      assert.deepEqual(lifecycle, ["current", "rewrite"]);
+      current = false;
+      if (cancel) h.controller.abort();
+      work.resolve(output);
+      assert.deepEqual(await run, { kind: cancel ? "cancelled" : "stale" });
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.deepEqual(lifecycle, cancel ? ["current", "rewrite"] : ["current", "rewrite", "current"]);
+    }
+  }
+});
+
+test("a pre-cancelled execution does not consult currency or call any other port", async () => {
+  const lifecycle: string[] = [];
+  const h = harness({
+    isCurrent: () => { lifecycle.push("current"); return false; },
+    rewrite: async () => { lifecycle.push("rewrite"); return "Never published"; },
+    publish: () => { lifecycle.push("publish"); },
+  });
+  h.controller.abort(new Error("session ended"));
+  assert.deepEqual(await h.run(), { kind: "cancelled" });
+  assert.deepEqual(lifecycle, []);
+});
+
+test("the maximum raw input crosses the port unchanged and output keeps its formatting", async () => {
+  const text = `\r\n${"x".repeat(MAX_INPUT_CHARS - 4)}\r\n`;
+  const output = " \r\nA plugin-owned reading.\t ";
+  let rewrites = 0;
+  const h = harness({ rewrite: async raw => { rewrites++; assert.equal(raw, text); return output; } });
+  assert.deepEqual(await h.run({ id: source.id, text }), { kind: "accepted", sourceEntryId: source.id, text: output });
+  assert.equal(rewrites, 1);
+  assert.deepEqual(h.publications, [{ sourceEntryId: source.id, text: output }]);
+});
+
 test("publication faults are not mislabeled as provider failures", async () => {
   let publishes = 0;
   const h = harness({ publish: () => { publishes++; throw new Error("storage fault"); } });

@@ -34,6 +34,32 @@ test("only exact trimmed duplicates are rejected, not case or whitespace transfo
   }
 });
 
+test("source bounds count raw UTF-16 units, including formatting and supplementary characters", () => {
+  const atLimit = `\r\n${"𝄞".repeat((MAX_INPUT_CHARS - 4) / 2)}\r\n`;
+  assert.equal(atLimit.length, MAX_INPUT_CHARS);
+  assert.deepEqual(prepareRewrite(atLimit), { kind: "ready", plan: { original: atLimit } });
+  assert.deepEqual(prepareRewrite(`${atLimit} `), { kind: "rejected", reason: "source-too-long" });
+  assert.deepEqual(prepareRewrite(" ".repeat(MAX_INPUT_CHARS + 1)), { kind: "rejected", reason: "empty-source" });
+});
+
+test("output bounds preserve supplementary characters and reject excess raw whitespace", () => {
+  const atLimit = ` ${"𝄞".repeat((MAX_OUTPUT_CHARS - 2) / 2)}\n`;
+  assert.equal(atLimit.length, MAX_OUTPUT_CHARS);
+  assert.deepEqual(finalizeRewrite(plan, atLimit), { kind: "accepted", text: atLimit });
+  assert.deepEqual(finalizeRewrite(plan, `${atLimit}\t`), { kind: "rejected", reason: "invalid-output" });
+});
+
+test("duplicate comparison trims both sides but does not normalize Unicode or line endings", () => {
+  const original = " \r\nRead café.\r\nThen continue.\t ";
+  const prepared = prepareRewrite(original);
+  assert.equal(prepared.kind, "ready");
+  if (prepared.kind !== "ready") assert.fail("valid source must be prepared");
+  assert.deepEqual(finalizeRewrite(prepared.plan, original.trim()), { kind: "rejected", reason: "unchanged" });
+  for (const output of [original.normalize("NFD"), original.replaceAll("\r\n", "\n")]) {
+    assert.deepEqual(finalizeRewrite(prepared.plan, output), { kind: "accepted", text: output });
+  }
+});
+
 test("there is no token parsing, literal integrity check, or semantic gate", () => {
   for (const output of [
     "A wholly invented story about 99 dragons.",

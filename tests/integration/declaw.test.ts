@@ -280,6 +280,19 @@ test('guards prevent model calls in busy, non-TUI, no-answer, no-auth, no-model 
   }
 });
 
+test('non-terminal UI and malformed commands receive actionable notices without entering the rewrite flow', async (t) => {
+  const h = await harness(t);
+  h.ctx.mode = 'rpc';
+  await h.run();
+  assert.deepEqual(h.notices, ["/declaw currently requires Pi's terminal UI."]);
+  h.ctx.mode = 'tui';
+  await h.run('plain extra');
+  assert.equal(h.notices.at(-1), 'Use /declaw to rewrite, /declaw style, /declaw model, /declaw list, or /declaw manage.');
+  assert.equal(h.calls.length + h.authCalls.length + h.findCalls.length + h.picks.length + h.entries().length, 0);
+  await h.run('plain');
+  assert.equal(h.entries().length, 1, 'rejected commands do not reserve the next request');
+});
+
 test('input and output limits are inclusive operational bounds, not technical-content checks', async (t) => {
   assert.equal(MAX_INPUT_CHARS, 32_000);
   assert.equal(MAX_OUTPUT_CHARS, 64_000);
@@ -375,6 +388,49 @@ test('malformed, incomplete, empty and oversized provider output fails without r
     });
   }
   assert.deepEqual(prepareRewrite('x'.repeat(MAX_INPUT_CHARS + 1)), { kind: 'rejected', reason: 'source-too-long' });
+});
+
+test('publication failure hides storage diagnostics, preserves the source and releases the next command', async (t) => {
+  const h = await harness(t);
+  const before = structuredClone(h.sm.buildSessionContext().messages);
+  const source = latestAnswer(h.sm.getBranch());
+  // The real runtime append hook delegates to this session persistence boundary.
+  const append = t.mock.method(h.sm, 'appendCustomEntry', () => {
+    throw new Error('PRIVATE_STORAGE_FAILURE /private/session.jsonl FAKE_API_KEY');
+  });
+  await h.run();
+  assert.equal(append.mock.callCount(), 1, 'a failed publication is not retried');
+  assert.equal(append.mock.calls[0].arguments[0], ENTRY_TYPE);
+  assert.equal(append.mock.calls[0].arguments[1].sourceEntryId, source!.id);
+  assert.equal(append.mock.calls[0].arguments[1].text, rewrittenMock(source!.text));
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0][2].signal.aborted, true, 'the failed command cleans up its controller');
+  assert.equal(h.entries().length + h.rendered.length, 0);
+  assert.deepEqual(h.notices, ['The rewrite failed. The original is unchanged.']);
+  assert.deepEqual(latestAnswer(h.sm.getBranch()), source);
+  assert.deepEqual(h.sm.buildSessionContext().messages, before);
+  append.mock.restore();
+  await h.run();
+  assert.equal(h.calls.length, 2);
+  assert.equal(h.entries().length, 1, 'publication failure does not retain the active reservation');
+  assert.deepEqual(h.sm.buildSessionContext().messages, before);
+});
+
+test('a UI setup failure is reported safely without calling the provider or retaining the command', async (t) => {
+  const h = await harness(t);
+  const before = structuredClone(h.sm.buildSessionContext().messages);
+  const custom = t.mock.method(h.ctx.ui, 'custom', async () => {
+    throw new Error('PRIVATE_TERMINAL_FAILURE FAKE_API_KEY');
+  });
+  await h.run();
+  assert.equal(custom.mock.callCount(), 1);
+  assert.equal(h.calls.length + h.authCalls.length + h.entries().length + h.rendered.length, 0);
+  assert.deepEqual(h.notices, ['The /declaw request failed. The original is unchanged.']);
+  assert.deepEqual(h.sm.buildSessionContext().messages, before);
+  custom.mock.restore();
+  await h.run();
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.entries().length, 1);
 });
 
 test('cancellation and lifecycle events release active request and discard late provider results', async (t) => {
@@ -890,6 +946,25 @@ test('invalid style settings fail closed, but style picker repairs them without 
   assert.equal(h.entries()[0].data.style, 'slye');
 });
 
+test('style picker reports a real filesystem save failure safely and can save after repair', async (t) => {
+  const h = await harness(t, false);
+  await mkdir(h.stylePath, { recursive: true });
+  const markerPath = join(h.stylePath, 'PRIVATE_EXISTING_FILE');
+  await writeFile(markerPath, 'PRIVATE_EXISTING_CONTENT');
+  h.select = async (_title: string, labels: string[]) => labels.find((label) => label.includes('(terse)'));
+  await h.run('style');
+  assert.deepEqual(h.notices, ['Could not save the /declaw style choice. Check the permissions on its settings directory.']);
+  assert.equal(h.calls.length + h.authCalls.length + h.entries().length, 0);
+  assert.equal(await readFile(markerPath, 'utf8'), 'PRIVATE_EXISTING_CONTENT');
+  assert.deepEqual(await readdir(dirname(h.stylePath)), ['style.json'], 'failed atomic save removes its temporary file');
+  await rm(h.stylePath, { recursive: true });
+  await h.run('style');
+  assert.equal(await readStyleChoice(h.stylePath), 'terse');
+  assert.equal(h.picks.length, 2);
+  assert.match(h.notices.at(-1), /now uses Terse/);
+  assert.equal(h.calls.length + h.authCalls.length + h.entries().length, 0);
+});
+
 test('style file defaults only when missing and failed saves preserve the valid preference', async (t) => {
   const h = await harness(t, false);
   assert.equal(await readStyleChoice(h.stylePath), DEFAULT_STYLE_ID);
@@ -921,6 +996,9 @@ test('plugin management can repair an invalid plugin status file', async (t) => 
   const h = await harness(t, false);
   await mkdir(dirname(join(h.agentDir, 'declaw', 'plugins.json')), { recursive: true });
   await writeFile(join(h.agentDir, 'declaw', 'plugins.json'), '{PRIVATE_INVALID');
+  await h.run();
+  assert.deepEqual(h.notices, ['The /declaw plugin settings file is invalid. Run /declaw manage to repair it.']);
+  assert.equal(h.calls.length + h.authCalls.length + h.entries().length, 0);
   h.select = async (_title: string, labels: string[]) => labels.find((label) => label.includes('(builtin/plain)'));
   await h.ext.commands.get('declaw').handler('manage', h.ctx);
   assert.deepEqual(JSON.parse(await readFile(join(h.agentDir, 'declaw', 'plugins.json'), 'utf8')), {
