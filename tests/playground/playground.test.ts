@@ -4,16 +4,43 @@ import { readFile, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import vm from "node:vm";
+import { STYLE_IDS } from "../../src/domain/styles.ts";
+import { BUILTIN_CATALOG } from "../../src/plugins/built-in/catalog.ts";
 import { build, compileSnapshot, countWords, scriptJson, validateSnapshot, renderEvidence, renderAttribution, DEFAULT_CASE_ID, type Snapshot, type Recording } from "../../playground/build.ts";
 
 import { legacySnapshot } from './legacy-snapshot.ts';
 
 const fixture = JSON.parse(await readFile(new URL("../../playground/samples.json", import.meta.url), "utf8")) as Snapshot;
 
+// Historical policy-8 hashes (bd9df90). A static recording is checked against the
+// policy that produced it, not silently relabeled when the live engine changes.
+const historicalHashes: Record<string, string> = {
+  plain: "dcadba54c25fc0b1d8e8cf4e214ee39d03fe39efceef3e155f49b4e00cb4f916",
+  terse: "d5c0c1e06ea3ea03b4e1ce3b2f3879656880fa2b1dd9205d4dbfb5d709fa975d",
+  adhd: "96f21c37d6adbde2e8b083872e35c09e910a94fb54ba85bb2571db4c115b61b9",
+  squirrel: "6be86544dfebbc249a3a8e94cec6faf3732af1e299674640a42bce7d0ab4438e",
+  ste: "0436d0f672ebfb41fe61931c5b77d0b5f6a15e0880b911784bbc234b3ffb6954",
+  slye: "ad0161bdf222f324eb1fc72596e064f5e38c8241c04df7ff65b72a48f86cb4fb",
+};
+
+test("public snapshot includes all six styles with its historical recording provenance", () => {
+  validateSnapshot(fixture);
+  assert.equal(fixture.version, 2, "Public demos must not silently fall back to the five-style snapshot");
+  assert.deepEqual(fixture.modes.map(mode => mode.id), [...STYLE_IDS]);
+  for (const sample of fixture.cases) {
+    assert.deepEqual(sample.variants.map(variant => variant.mode), [...STYLE_IDS]);
+    for (const variant of sample.variants) {
+      assert.equal(variant.recording?.systemHash, historicalHashes[variant.mode]);
+      assert.equal(variant.recording?.promptVersion, "package-styles-8");
+      for (const literal of sample.mustKeep) assert.ok(variant.text.includes(literal), `${sample.id}/${variant.mode}: ${literal}`);
+    }
+  }
+});
+
 test("all recordings compile without changing saved text", () => {
   const pristine = JSON.stringify(fixture), data = compileSnapshot(fixture);
   assert.equal(data.cases.length, 4);
-  assert.equal(data.cases.flatMap(c => c.variants).length, fixture.version === 2 ? 24 : 20);
+  assert.equal(data.cases.flatMap(c => c.variants).length, 24);
   assert.equal(JSON.stringify(fixture), pristine);
   assert.equal(data.defaultCaseId, "verbose-explanation");
   data.cases.forEach((c, i) => {
@@ -52,14 +79,34 @@ test("snapshot validation rejects incomplete, reordered or non-synthetic evidenc
     assert.throws(() => validateSnapshot(clone));
   }
 });
+test("version-2 recordings require packaged provenance for every style", () => {
+  for (const mutate of [
+    (s: Snapshot) => { delete s.cases[0].variants[0].recording; },
+    (s: Snapshot) => { delete s.cases[0].variants[0].recording!.systemHash; },
+    (s: Snapshot) => { s.cases[0].variants[0].recording!.systemHash = "not-a-sha256"; },
+    (s: Snapshot) => { s.cases[0].variants[0].recording!.promptSource = "plain-lab-2"; },
+  ]) {
+    const clone = structuredClone(fixture); mutate(clone);
+    assert.throws(() => validateSnapshot(clone));
+  }
+  const legacy = legacySnapshot(fixture);
+  assert.doesNotThrow(() => validateSnapshot(legacy));
+  assert.equal(compileSnapshot(legacy).cases.flatMap(sample => sample.variants).length, 20);
+});
+
 const recording: Recording = {
   runId: "reviewed-run", recordedAt: "2026-09-12T10:00:00.000Z", model: "reviewed-model",
   promptVersion: "paseo-plain-v5", context: "answer", promptSource: "paseo-plain-v5",
 };
 test("recognizable modes carry source attribution without rewriting saved outputs", () => {
   const data = compileSnapshot(fixture);
-  assert.deepEqual(data.modes.map(m => m.label), ["Paseo Plain", "Terse", "I Have ADHD", "Squirrel Mode", "ASD-STE100", ...(fixture.version === 2 ? ["Speak Like You Eat"] : [])]);
-  assert.deepEqual(data.modes.map(m => m.source.label), ["scowalt/paseo-plain", "Terse", "ayghri/i-have-adhd", "thgMatajs/squirrel-mode", "danyuchn/asd-ste100-skill", ...(fixture.version === 2 ? ["wtfzambo/speak-like-you-eat"] : [])]);
+  assert.deepEqual(data.modes.map(m => m.label), ["Paseo Plain", "Terse", "I Have ADHD", "Squirrel Mode", "ASD-STE100", "Speak Like You Eat"]);
+  assert.deepEqual(data.modes.map(m => m.source.label), ["scowalt/paseo-plain", "Terse", "ayghri/i-have-adhd", "thgMatajs/squirrel-mode", "danyuchn/asd-ste100-skill", "wtfzambo/speak-like-you-eat"]);
+  for (const sample of data.cases) {
+    for (const variant of sample.variants) {
+      assert.equal(variant.attribution.relationship, BUILTIN_CATALOG.get(variant.mode)!.style.relationship);
+    }
+  }
   for (const mode of data.modes) {
     if (mode.id === "terse") assert.equal(mode.source.url, undefined);
     else assert.equal(mode.source.url, `https://github.com/${mode.source.label}`);
@@ -154,6 +201,13 @@ test("production build is self-contained, deterministic and removes the retired 
     const html = await readFile(join(output, "index.html"), "utf8");
     const data = await readFile(join(output, "data.js"), "utf8");
     assert.ok(!html.includes("<!-- INITIAL_"));
+    for (const mode of STYLE_IDS) assert.ok(html.includes(`data-mode="${mode}"`), `Missing ${mode} button`);
+    assert.match(html, /Speak Like You Eat/);
+    const credits = await readFile(join(output, "credits.html"), "utf8");
+    assert.match(credits, /six styles/);
+    assert.match(credits, /historical single-pass recordings/);
+    assert.match(credits, /not the current plugin-owned transformation policy/);
+    assert.equal((await readFile(join(output, "evidence.html"), "utf8")).match(/class="evidence-variant"/g)?.length, 24);
     const initial = compileSnapshot(fixture).cases.find(c => c.id === DEFAULT_CASE_ID)!.variants[0];
     assert.ok(html.includes(`<p class="source-attribution" id="source-attribution">${initial.attributionHtml}</p>`));
     assert.equal((html.match(/id="source-attribution"/g) ?? []).length, 1);

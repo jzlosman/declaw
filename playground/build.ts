@@ -95,7 +95,7 @@ export function compileSnapshot(snapshot: Snapshot) {
       variants: c.variants.map(v => {
         const comparison = renderComparison(c.original, v.text);
         const source = snapshot.modes.find(m => m.id === v.mode)!.source;
-        const attribution: Attribution = v.recording?.promptSource === "paseo-plain-v5"
+        const attribution: Attribution = v.mode === "plain" && ["paseo-plain-v5", "package-v4"].includes(v.recording?.promptSource ?? "")
           ? { label: "scowalt/paseo-plain", url: "https://github.com/scowalt/paseo-plain", relationship: "Prompt from" }
           : { ...source, ...(v.mode === "plain" && v.recording?.promptSource !== "package-v4" ? { relationship: "Inspired by" as const } : {}) };
         return {
@@ -129,7 +129,7 @@ export function renderCredits(snapshot: Snapshot, template: string): string {
   const packaged = snapshot.version === 2 && plain.length > 0 && plain.every(v => v.recording?.promptSource === "package-v4");
   const legacy = plain.some(v => !v.recording || v.recording.promptSource === "plain-lab-2");
   const provenance = packaged
-    ? "These recordings use the installed package’s six styles, shared meaning-preservation rules and exact-text protection. Paseo Plain and Speak Like You Eat combine pinned source prompts with those shared rules."
+    ? "These historical single-pass recordings cover six styles. They use earlier prompts and exact-text protection, not the current plugin-owned transformation policy. They are not a success-rate benchmark or a guarantee of accuracy. Each output identifies its recording run and prompt version. Paseo Plain and Speak Like You Eat combined pinned source prompts with the shared rules used at recording time."
     : legacy
       ? "This snapshot includes Plain recordings from an earlier local prompt, not Scott’s exact writing prompt. The historical four-call upstream comparison failed fidelity review and was not promoted. Each output’s attribution identifies its source."
       : "Plain recordings marked “Prompt from” use the pinned upstream writing prompt. Each output’s recording details identify its source.";

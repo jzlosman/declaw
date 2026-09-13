@@ -3,6 +3,7 @@ import type { Api, AssistantMessage, Context, Model, SimpleStreamOptions } from 
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { buildStyleRequest, DEFAULT_STYLE_ID, type StyleCatalog, type StyleId } from "../domain/styles.ts";
 import { BUILTIN_CATALOG } from "../plugins/built-in/catalog.ts";
+import type { StyleRequestPayload } from "../plugin-api.ts";
 
 /** Composed default prompt exposed for integration diagnostics and compatibility. */
 export const SYSTEM_PROMPT = buildStyleRequest("", DEFAULT_STYLE_ID, BUILTIN_CATALOG).system;
@@ -28,13 +29,21 @@ export function latestAnswer(branch: readonly SessionEntry[]): { id: string; tex
 
 /** Converts the domain rewrite request into Pi's isolated, tool-free provider context. */
 export function isolatedRequest(
-  maskedAnswer: string,
+  answer: string,
   model: Model<Api>,
   signal: AbortSignal,
   style: StyleId = DEFAULT_STYLE_ID,
   catalog: StyleCatalog = BUILTIN_CATALOG,
 ): { context: Context; options: SimpleStreamOptions } {
-  const request = buildStyleRequest(maskedAnswer, style, catalog);
+  return isolatedModelRequest(buildStyleRequest(answer, style, catalog), model, signal);
+}
+
+/** Each rewrite gets a fresh context, without ambient conversation or a shared session. */
+export function isolatedModelRequest(
+  request: StyleRequestPayload,
+  model: Model<Api>,
+  signal: AbortSignal,
+): { context: Context; options: SimpleStreamOptions } {
   const context: Context = {
     systemPrompt: request.system,
     messages: [{ role: "user", content: request.user, timestamp: Date.now() }],

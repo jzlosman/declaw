@@ -22,10 +22,10 @@ export interface DeclawStyleDefinition {
   description?: string;
   source?: string;
   relationship: StyleRelationship;
-  /** Style instructions only. Declaw appends its host-owned fidelity policy. */
+  /** Defines the transformation. Host rewrite guidance is advisory; the style controls. */
   instructions: string;
-  /** Purely formats the already-protected answer for this style's model envelope. */
-  buildUserPayload: (protectedAnswer: string) => string;
+  /** Purely formats the original, unmasked answer for this style's model envelope. */
+  buildUserPayload: (answer: string) => string;
 }
 
 export interface DeclawStylePlugin {

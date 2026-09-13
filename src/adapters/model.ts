@@ -1,9 +1,12 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { PlainError } from "../domain/rewrite.ts";
-import { isolatedRequest } from "./pi.ts";
+import { PlainError } from "./errors.ts";
+import { completedText, isolatedModelRequest } from "./pi.ts";
 import { readModelChoice, saveModelChoice } from "./settings.ts";
-import type { StyleCatalog, StyleId } from "../domain/styles.ts";
+import { buildRewriteRequest, buildStyleRequest, DEFAULT_STYLE_ID, type StyleCatalog, type StyleId, type StyleRecord } from "../domain/styles.ts";
+import { BUILTIN_CATALOG } from "../plugins/built-in/catalog.ts";
+import type { StyleRequestPayload } from "../plugin-api.ts";
+import type { RewriteExecutionPorts } from "../application/rewrite.ts";
 
 /** Exclude non-reasoning models and explicit remappings away from low. */
 export function supportsLowThinking(model: Model<Api>): boolean {
@@ -31,10 +34,9 @@ export async function chooseModel(ctx: ExtensionCommandContext, settingsPath: st
   if (!signal.aborted) ctx.ui.notify(`/declaw now uses ${model.provider}/${model.id} with low thinking. Main agent settings are unchanged.`, "info");
 }
 
-/** Use Pi's provider-neutral low-thinking conversion without borrowing main-agent context. */
-export async function completeRewrite(
-  registry: ExtensionContext["modelRegistry"], model: Model<Api>, masked: string, signal: AbortSignal,
-  style?: StyleId, catalog?: StyleCatalog,
+/** Provider transport; auth is resolved afresh for each call. */
+async function completeRequest(
+  registry: ExtensionContext["modelRegistry"], model: Model<Api>, request: StyleRequestPayload, signal: AbortSignal,
 ) {
   signal.throwIfAborted();
   const provider = registry.getProvider(model.provider);
@@ -43,11 +45,36 @@ export async function completeRewrite(
   const auth = await registry.getApiKeyAndHeaders(model);
   signal.throwIfAborted();
   if (!auth.ok) throw new PlainError("Authentication for the /declaw model failed. Check /login or choose another model with /declaw model.");
-  const { context, options } = isolatedRequest(masked, model, signal, style, catalog);
+  const { context, options } = isolatedModelRequest(request, model, signal);
   return provider.streamSimple(auth.baseUrl ? { ...model, baseUrl: auth.baseUrl } : model, context, {
     ...options,
     apiKey: auth.apiKey,
     headers: auth.headers,
     env: auth.env,
   }).result();
+}
+
+/** Single rewrite operation retained for adapter-level tooling and diagnostics. */
+export async function completeRewrite(
+  registry: ExtensionContext["modelRegistry"], model: Model<Api>, source: string, signal: AbortSignal,
+  style: StyleId = DEFAULT_STYLE_ID, catalog: StyleCatalog = BUILTIN_CATALOG,
+) {
+  return completeRequest(registry, model, buildStyleRequest(source, style, catalog), signal);
+}
+
+/** Bind one model/style selection to an isolated single-call rewrite port. */
+export function createRewriteGateway(
+  registry: ExtensionContext["modelRegistry"], model: Model<Api>, style: StyleRecord,
+): Pick<RewriteExecutionPorts, "rewrite"> {
+  const selectedModel = Object.freeze({ ...model });
+  const selectedStyle = Object.freeze({ ...style.style });
+  const completeText = async (request: StyleRequestPayload, signal: AbortSignal): Promise<string> => {
+    const response = await completeRequest(registry, selectedModel, request, signal);
+    const text = completedText(response);
+    if (text === undefined) throw new PlainError("The model did not return complete text. The original is unchanged.");
+    return text;
+  };
+  return {
+    rewrite: (source, signal) => completeText(buildRewriteRequest(source, selectedStyle), signal),
+  };
 }

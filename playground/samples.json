@@ -1,41 +1,70 @@
 {
-  "version": 1,
-  "recordedAt": "2026-09-11T20:12:57.434Z",
-  "runId": "2026-09-11T20-12-57-433Z-09f4f46a",
+  "version": 2,
+  "recordedAt": "2026-09-13T00:55:53.143Z",
+  "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
   "model": "openai-codex/gpt-5.6-luna",
   "thinking": "low",
-  "promptVersion": "plain-lab-2",
+  "promptVersion": "package-styles-8",
   "synthetic": true,
   "modes": [
     {
       "id": "plain",
       "label": "Paseo Plain",
       "description": "Connected prose, everyday words.",
-      "source": { "label": "scowalt/paseo-plain", "url": "https://github.com/scowalt/paseo-plain", "relationship": "Inspired by" }
+      "source": {
+        "label": "scowalt/paseo-plain",
+        "url": "https://github.com/scowalt/paseo-plain",
+        "relationship": "Inspired by"
+      }
     },
     {
       "id": "terse",
       "label": "Terse",
       "description": "Compact phrasing, less ceremony.",
-      "source": { "label": "Terse", "relationship": "Local preset" }
+      "source": {
+        "label": "Terse",
+        "relationship": "Local preset"
+      }
     },
     {
       "id": "adhd",
       "label": "I Have ADHD",
       "description": "Actions and blockers brought forward.",
-      "source": { "label": "ayghri/i-have-adhd", "url": "https://github.com/ayghri/i-have-adhd", "relationship": "Adapted from" }
+      "source": {
+        "label": "ayghri/i-have-adhd",
+        "url": "https://github.com/ayghri/i-have-adhd",
+        "relationship": "Adapted from"
+      }
     },
     {
       "id": "squirrel",
       "label": "Squirrel Mode",
       "description": "Small, separately readable sections.",
-      "source": { "label": "thgMatajs/squirrel-mode", "url": "https://github.com/thgMatajs/squirrel-mode", "relationship": "Adapted from" }
+      "source": {
+        "label": "thgMatajs/squirrel-mode",
+        "url": "https://github.com/thgMatajs/squirrel-mode",
+        "relationship": "Adapted from"
+      }
     },
     {
       "id": "ste",
       "label": "ASD-STE100",
       "description": "Consistent terms and explicit conditions. STE-inspired.",
-      "source": { "label": "danyuchn/asd-ste100-skill", "url": "https://github.com/danyuchn/asd-ste100-skill", "relationship": "Adapted from" }
+      "source": {
+        "label": "danyuchn/asd-ste100-skill",
+        "url": "https://github.com/danyuchn/asd-ste100-skill",
+        "relationship": "Adapted from"
+      }
+    },
+    {
+      "id": "slye",
+      "label": "Speak Like You Eat",
+      "description": "Direct, conversational writing with concrete words and less jargon.",
+      "source": {
+        "label": "wtfzambo/speak-like-you-eat",
+        "url": "https://github.com/wtfzambo/speak-like-you-eat",
+        "relationship": "Adapted from"
+      }
     }
   ],
   "cases": [
@@ -65,23 +94,81 @@
       "variants": [
         {
           "mode": "plain",
-          "text": "I ran `pnpm test:export` against the local fixture database. The export now includes the previously missing tax column, and `tmp/invoice-preview.csv` opened successfully in the local preview tool.\n\nThese checks confirm the fixture-backed path, but not production readiness. They do not show that production credentials, storage permissions, or larger customer datasets will behave the same way. No staging or production request was made, and no remote configuration was changed.\n\nBefore this is considered ready, it still needs a staging export using the deployed service identity and a representative large dataset. That is a proposed verification step, not a completed test. Compatibility with older spreadsheet templates is also unresolved because it has not been checked."
+          "text": "The evidence supports the local fixture-backed path, not production readiness. I ran `pnpm test:export` against the local fixture database; the export now includes the missing tax column, and `tmp/invoice-preview.csv` opened successfully in the local preview tool.\n\nI did not test staging or production or change remote configuration, so production credentials, storage permissions, and larger customer datasets remain unverified.\n\nBefore this is ready, a staging export should be tested with the deployed service identity and a representative large dataset. That verification has not been completed. I also have not checked whether older spreadsheet templates accept the added column, so their compatibility remains unresolved.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "dcadba54c25fc0b1d8e8cf4e214ee39d03fe39efceef3e155f49b4e00cb4f916"
+          }
         },
         {
           "mode": "terse",
-          "text": "## Verification boundary\n\nThe local fixture-backed checks passed: `pnpm test:export` now includes the previously missing tax column, and `tmp/invoice-preview.csv` opened in the local preview tool.\n\nThis does **not** establish production readiness. Production credentials, storage permissions, and larger customer datasets are unverified. No staging or production request was made, and no remote configuration changed.\n\nStill required before calling it ready:\n\n- A staging export using the deployed service identity and a representative large dataset. This is proposed, not completed.\n- Verification that older spreadsheet templates accept the additional column; compatibility remains unresolved."
+          "text": "## Verification boundary\n\nThe evidence supports a narrower conclusion than production readiness. I ran `pnpm test:export` against the local fixture database; the export now includes the previously missing tax column. The generated file at `tmp/invoice-preview.csv` also opened successfully in the local preview tool.\n\nThese checks establish fixture-backed behavior, not whether production credentials, storage permissions, or larger customer datasets will behave the same way. No staging or production request was made, and no remote configuration changed.\n\nBefore calling this ready, we still need a staging export using the deployed service identity and a representative large dataset. This is proposed verification, not a completed test. I have not checked whether older spreadsheet templates accept the additional column, so compatibility remains unresolved.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "d5c0c1e06ea3ea03b4e1ce3b2f3879656880fa2b1dd9205d4dbfb5d709fa975d"
+          }
         },
         {
           "mode": "adhd",
-          "text": "## Before calling this ready\n\n1. Run a staging export using the deployed service identity and a representative large dataset.\n2. Check whether older spreadsheet templates accept the additional tax column.\n\nThese are proposed verification steps, not completed tests.\n\n## Evidence completed\n\n- `pnpm test:export` passed against the local fixture database.\n- The export includes the previously missing tax column.\n- `tmp/invoice-preview.csv` opened successfully in the local preview tool.\n\nThese checks establish behavior only for the fixture-backed path. They do not establish that production credentials, storage permissions, or larger customer datasets will behave the same way.\n\nNo staging or production request was made, and no remote configuration was changed. Compatibility with older spreadsheet templates remains unresolved."
+          "text": "## Next verification step\n\nBefore calling this ready, we still need a staging export using the deployed service identity and a representative large dataset. This is a proposed verification step, not a completed test.\n\n## Verified locally\n\n- I ran `pnpm test:export` against the local fixture database, and the export now includes the previously missing tax column.\n- The generated file at `tmp/invoice-preview.csv` opened successfully in the local preview tool.\n\nThese checks establish the behavior of the fixture-backed path. They do not establish that production credentials, storage permissions, or larger customer datasets will behave the same way.\n\n## Still unresolved\n\n- No staging or production request was made.\n- No remote configuration was changed.\n- I have not checked whether older spreadsheet templates accept the additional column, so compatibility with those templates remains unresolved.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "96f21c37d6adbde2e8b083872e35c09e910a94fb54ba85bb2571db4c115b61b9"
+          }
         },
         {
           "mode": "squirrel",
-          "text": "## Decision\n\nNo. The successful local preview test does not establish that the invoice export fix is ready for production.\n\n1. `pnpm test:export` passed against the local fixture database.\n2. The export now includes the previously missing tax column.\n3. `tmp/invoice-preview.csv` opened successfully in the local preview tool.\n4. These checks cover only the fixture-backed path.\n5. No staging or production request was made, and no remote configuration was changed.\n\n## Remaining verification\n\nBefore calling this ready, run a staging export using the deployed service identity and a representative large dataset.\n\nProduction credentials, storage permissions, and larger customer datasets may behave differently. Compatibility with older spreadsheet templates is also unresolved because it has not been checked."
+          "text": "## Verification boundary\n\nThe current evidence does not establish production readiness.\n\n1. I ran `pnpm test:export` against the local fixture database, and the export now includes the previously missing tax column.\n2. The generated file at `tmp/invoice-preview.csv` opened successfully in the local preview tool.\n3. These checks establish behavior for the fixture-backed path, but not whether production credentials, storage permissions, or larger customer datasets will behave the same way.\n4. No staging or production request was made, and no remote configuration was changed.\n5. Before calling this ready, we still need a staging export using the deployed service identity and a representative large dataset. This is a proposed verification step, not a completed test.\n\nCompatibility with older spreadsheet templates remains unresolved because I have not checked whether they accept the additional column.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "6be86544dfebbc249a3a8e94cec6faf3732af1e299674640a42bce7d0ab4438e"
+          }
         },
         {
           "mode": "ste",
-          "text": "## Verification boundary\n\nThe successful local preview test does not show that the invoice export fix is ready for production.\n\nI ran `pnpm test:export` against the local fixture database. The export now includes the previously missing tax column. The generated file, `tmp/invoice-preview.csv`, opened successfully in the local preview tool.\n\nThese checks establish behavior for the fixture-backed path only. They do not establish that production credentials, storage permissions, or larger customer datasets will behave the same way.\n\nNo staging or production request was made. No remote configuration was changed.\n\nBefore approval, a staging export still needs testing with the deployed service identity and a representative large dataset. This is a proposed verification step, not a completed test.\n\nCompatibility with older spreadsheet templates remains unresolved because it has not been checked."
+          "text": "## Verification boundary\n\nThe current evidence supports a narrower conclusion than production readiness.\n\nI ran `pnpm test:export` against the local fixture database. The export now includes the previously missing tax column. The generated file at `tmp/invoice-preview.csv` also opened successfully in the local preview tool.\n\nThese checks establish behavior for the fixture-backed path. They do not establish equivalent behavior for production credentials, storage permissions, or larger customer datasets.\n\nNo staging or production request was made. No remote configuration was changed.\n\nBefore calling this ready, we still need a staging export with the deployed service identity and a representative large dataset. This is a proposed verification step, not a completed test.\n\nI have not checked whether older spreadsheet templates accept the additional column. Compatibility with those templates remains unresolved.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "0436d0f672ebfb41fe61931c5b77d0b5f6a15e0880b911784bbc234b3ffb6954"
+          }
+        },
+        {
+          "mode": "slye",
+          "text": "## Verification boundary\nThe current evidence supports a narrower conclusion than production readiness. I ran `pnpm test:export` against the local fixture database, and the export now includes the previously missing tax column. The generated file at `tmp/invoice-preview.csv` also opened successfully in the local preview tool.\n\nThese checks confirm the fixture-backed path works. They do not confirm that the production credentials, storage permissions, or larger customer datasets will behave the same way. No staging or production request was made, and no remote configuration was changed.\n\nBefore calling this ready, we still need a staging export using the deployed service identity and a representative large dataset. That is a proposed verification step, not a completed test. I have also not checked whether older spreadsheet templates accept the additional column, so compatibility with those templates remains unresolved.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "ad0161bdf222f324eb1fc72596e064f5e38c8241c04df7ff65b72a48f86cb4fb"
+          }
         }
       ]
     },
@@ -117,23 +204,81 @@
       "variants": [
         {
           "mode": "plain",
-          "text": "Caching the reports page raises two separate questions: whether report data can be reused while being up to `15 minutes` old, and whether a distributed service is necessary. The freshness allowance makes reuse possible, but we have not measured whether the delay comes from the report query, response preparation, or browser work. Only the first would clearly benefit from reusing query results.\n\nReport freshness does not relax authorization. Each request must use the current access decision before returning cached data. Separating entries by organization can reduce the risk of mixing data, but it does not replace authorization; someone whose access was removed must not receive a cached report. This is a requirement for any cache, not evidence that the current implementation has this bug.\n\nI recommend measuring a representative request first. If the query dominates and equivalent requests recur often enough, a cache becomes reasonable. If response preparation or browser work dominates, cached query results may not address the main delay. A distributed cache would also add expiration behavior, cache-miss handling, and another service to operate.\n\nThe measurement has not been run, and neither caching nor an authorization change has been implemented. The `15 minutes` allowance supports investigating caching, but does not show that caching will improve the page."
+          "text": "Caching the reports page raises two separate questions: whether old report data can be reused within the allowed freshness delay, and whether a distributed service is needed. Allowing report data to be `15 minutes` old makes reuse possible, but we have not measured whether the main delay comes from the report query, response preparation, or browser work.\n\nThe freshness allowance applies to report data, not access permissions. Requests must use the current authorization decision before returning cached data. Separating cache entries by organization would reduce the risk of mixing organizations' data, but it would not replace authorization. Someone whose access was removed must not receive the report from an existing cache entry. This is a requirement for a proposed cache, not evidence that the current implementation has this bug.\n\nI recommend measuring a representative request before adding a distributed service. If the query is the main delay and equivalent requests recur often enough, caching may help. If response preparation or browser work is the main delay, reusing query results may not. A distributed cache would also add expiration rules, cache-miss handling, and another service to operate.\n\nThe measurement has not been run, and no cache or authorization change has been implemented. I would reconsider the recommendation after we know where the delay occurs and whether repeated requests share reusable results. For now, the freshness allowance justifies investigating caching; it does not show that caching will improve the page.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "dcadba54c25fc0b1d8e8cf4e214ee39d03fe39efceef3e155f49b4e00cb4f916"
+          }
         },
         {
           "mode": "terse",
-          "text": "There are two separate questions:\n\n1. Can previously calculated report data be reused within the allowed `15 minutes`?\n2. Is a distributed cache necessary to achieve that?\n\nThe freshness allowance makes reuse possible, but does not show that a distributed cache is the right first change. We have not measured whether the delay comes from the report query, response preparation, or browser work. Only the first may benefit directly from cached query results.\n\nAuthorization must remain current even when report data is cached. Entries should be separated by organization to reduce cross-organization mixing, but that does not replace authorization. Someone whose access was removed must not receive the report from a stale cache. This is a requirement, not evidence that the current implementation has that bug.\n\nMeasure a representative request first. Caching becomes a reasonable candidate if the report query dominates and equivalent requests recur often enough. If response preparation or browser work dominates, cached query results may not address the main delay. A distributed cache also adds expiration behavior, cache-miss handling, and another service to operate.\n\nNo measurement, cache, or authorization change has been implemented. The recommendation should be revisited after measuring the delay and determining whether requests share reusable results. The `15 minutes` allowance supports investigating caching; it does not establish that caching will improve the page."
+          "text": "The suggestion to cache the reports page combines two questions:\n\n1. Can previously calculated report data be reused without violating freshness?\n2. Is a separate distributed service necessary for that reuse?\n\nAllowing data up to `15 minutes` old makes reuse possible, but does not establish that a distributed cache is the right first change. We have not measured whether the delay comes from the report query, response preparation, or browser work; those would not necessarily benefit from the same intervention.\n\nReport freshness is separate from authorization freshness. The accepted delay applies to report data, not access decisions. Even cached data must be returned only after the current access decision is checked. Separating entries by organization could reduce cross-organization mixing, but would not replace authorization. A person whose access was removed must not receive the report because a cached result remains. This describes a requirement for any proposed cache, not evidence that the current implementation has this bug.\n\nI recommend measuring a representative request before adding the distributed service. If the report query dominates and equivalent requests recur often enough, caching becomes a reasonable candidate. If response preparation or browser work dominates, reusing query results may not address the main delay. A distributed cache would also add expiration behavior, cache-miss handling, and another service to operate. These are tradeoffs, not proof that caching would be a mistake.\n\nThe measurement has not been run, and neither a cache nor an authorization change has been implemented. I would reconsider the recommendation after we know where the delay occurs and whether repeated requests share reusable results. Until then, the freshness allowance supports investigating caching; it does not show that caching will improve the page.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "d5c0c1e06ea3ea03b4e1ce3b2f3879656880fa2b1dd9205d4dbfb5d709fa975d"
+          }
         },
         {
           "mode": "adhd",
-          "text": "Measure a representative reports-page request before adding a distributed cache.\n\n1. Identify where the delay occurs:\n   - Report query\n   - Response preparation\n   - Browser work\n\n   The measurement has not been run. These causes would not all benefit from caching query results.\n\n2. Check whether equivalent requests recur often enough for reuse to help.\n\n3. Preserve the security boundary:\n   - Report data may be up to `15 minutes` old.\n   - Access permissions must be checked currently before returning cached data.\n   - Entries should be separated by organization to reduce the risk of mixing data, but that does not replace authorization.\n   - A person whose access was removed must not receive the report because a cached result still exists.\n\nIf the query dominates and reusable requests recur, a cache becomes a reasonable candidate. If response preparation or browser work dominates, query-result reuse may not address the main delay.\n\nA distributed cache would add expiration behavior, cache-miss handling, and another service to operate. These are tradeoffs, not proof that caching is wrong. Neither a cache nor an authorization change has been implemented. The `15 minutes` allowance supports investigating caching; it does not establish that caching will improve the page."
+          "text": "Measure a representative request before adding the distributed service.\n\n1. Determine which part of the current request consumes the most time:\n   - The report query\n   - Response preparation\n   - Browser work\n\n   The measurement has not been run. These possibilities would not all benefit from the same intervention.\n\n2. If the report query dominates and equivalent requests recur often enough to make reuse useful, a cache becomes a reasonable candidate.\n\n3. If response preparation or browser work dominates, reusing query results may leave the main delay untouched.\n\nThe accepted delay of up to `15 minutes` applies to report data, not access permissions. Cached responses must still use the current access decision before being returned. Separating cached entries by organization would reduce the chance of mixing organizations' data, but would not replace authorization. A person whose access was removed must not continue receiving the report because a cached result exists. This describes a requirement for any proposed cache; it does not establish that the current implementation has such a bug.\n\nA distributed cache would introduce expiration behavior, cache-miss handling, and another service to operate. These are tradeoffs to evaluate, not proof that caching would be a mistake.\n\nNeither a cache nor an authorization change has been implemented. I would reconsider the recommendation after determining where the delay occurs and whether repeated requests actually share reusable results. Until then, the freshness allowance supports investigating caching; it is not evidence that caching will improve this page.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "96f21c37d6adbde2e8b083872e35c09e910a94fb54ba85bb2571db4c115b61b9"
+          }
         },
         {
           "mode": "squirrel",
-          "text": "## Recommendation\n\nDo not add the distributed cache yet. First measure a representative request to identify whether the delay comes mainly from:\n\n1. The report query.\n2. Response preparation.\n3. Browser work.\n\nThe measurement has not been run.\n\n## Security and freshness\n\n1. Report data may be up to `15 minutes` old.\n2. Access permissions must be evaluated using the current decision on every request.\n3. A cached result must not be returned to someone whose access was removed.\n4. Separating entries by organization can reduce accidental data mixing, but it does not replace authorization.\n5. This is a requirement for any cache; it does not establish that the current implementation has an authorization bug.\n\n## What would change the recommendation\n\nCaching becomes a reasonable candidate if:\n\n1. The report query is the main source of delay.\n2. Equivalent requests recur often enough to reuse results.\n3. The cache can handle expiration and cache misses safely.\n\nIf response preparation or browser work dominates, reusing query results may not improve the main delay.\n\nA distributed cache would also add expiration behavior, cache-miss handling, and another service to operate. These are tradeoffs to evaluate, not proof that caching would be a mistake."
+          "text": "## Recommendation\n\nMeasure a representative request before adding the distributed service. The freshness allowance makes caching worth investigating, but does not establish that a distributed cache is the appropriate first change.\n\n1. Separate the two questions:\n   - Can previously calculated report data be reused without violating freshness?\n   - Is a separate distributed service necessary for that reuse?\n2. Data up to `15 minutes` old may be reusable, but this alone does not justify a distributed cache.\n3. The current bottleneck has not been measured. It could be:\n   - The report query\n   - Response preparation\n   - Browser work\n4. If the report query dominates and equivalent requests recur often enough, caching becomes a reasonable candidate.\n5. If response preparation or browser work dominates, reusing query results may leave the main delay untouched.\n\n## Authorization and freshness\n\n1. The accepted delay applies to report data, not to the decision about who may read it.\n2. A cached response must still use the current access decision before it is returned.\n3. Separating cached entries by organization would reduce the chance of mixing organizations’ data, but would not replace authorization.\n4. Someone whose access was removed must not continue receiving the report because a cached result still exists.\n5. This does not establish that the current implementation has such a bug; it states a requirement any proposed cache must satisfy.\n\n## Tradeoffs and status\n\nA distributed cache would introduce expiration behavior, cache-miss handling, and another service to operate. These are tradeoffs to evaluate, not proof that caching would be a mistake.\n\nThe measurement has not been run, and neither a cache nor an authorization change has been implemented. I would reconsider the recommendation once we know where the delay occurs and whether repeated requests actually share reusable results.\n\nUntil then, the freshness allowance supports investigating caching; it is not evidence that caching will improve this page.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "6be86544dfebbc249a3a8e94cec6faf3732af1e299674640a42bce7d0ab4438e"
+          }
         },
         {
           "mode": "ste",
-          "text": "There are two separate questions:\n\n1. Can previously calculated report data be reused within the accepted `15 minutes` freshness window?\n2. Is a separate distributed service necessary for that reuse?\n\nThe freshness allowance makes caching possible, but it does not show that a distributed cache is the right first change. We have not measured the current delay. The report query, response preparation, or browser work may be responsible, and caching would not help all of them.\n\nCached report data must not delay access decisions. Each request must use the current authorization result before returning data. Separating entries by organization can reduce cross-organization mixing, but it does not replace authorization. A person whose access was removed must not receive a cached report. This requirement does not establish that the current implementation has this bug.\n\nMy recommendation is to measure a representative request before adding the distributed service.\n\n- If the report query dominates and equivalent requests recur often, caching becomes a reasonable candidate.\n- If response preparation or browser work dominates, cached query results may not reduce the main delay.\n\nA distributed cache would also add expiration behavior, cache-miss handling, and another service to operate. These are tradeoffs, not proof that caching would be a mistake.\n\nThe measurement has not been run. We have implemented neither a cache nor an authorization change. I would reconsider the recommendation after confirming where the delay occurs and whether repeated requests share reusable results. Until then, the freshness allowance supports investigating caching, but does not show that caching will improve the page."
+          "text": "The suggestion to cache the reports page contains two separate questions:\n\n1. Can previously calculated report data be reused without violating the freshness requirement?\n2. Is a separate distributed service necessary for that reuse?\n\nAllowing data to be `15 minutes` old makes reuse possible. It does not establish that a distributed cache is the appropriate first change.\n\nWe have not measured which part of the request consumes the most time. The delay could come from the report query, response preparation, or browser work. Each possibility may require a different intervention.\n\nReport freshness and access-decision freshness have different boundaries. The accepted delay applies to report data, not access permissions. The request must use the current access decision before it returns cached data.\n\nSeparating cached entries by organization would reduce the chance of mixing organizations' data. It would not replace authorization. A person whose access was removed must not receive the report because a cached result still exists. This does not establish that the current implementation has this bug. It states a requirement for any proposed cache.\n\nMy recommendation is to measure a representative request before adding the distributed service.\n\n- If the report query dominates and equivalent requests recur often enough, a cache becomes a reasonable candidate.\n- If response preparation or browser work dominates, reusing query results may leave the main delay unchanged.\n\nA distributed cache would also introduce expiration behavior, cache-miss handling, and another service to operate. These are tradeoffs to evaluate, not proof that caching would be a mistake.\n\nThe measurement has not been run. Neither a cache nor an authorization change has been implemented. I would reconsider the recommendation after we know where the delay occurs and whether repeated requests share reusable results.\n\nUntil then, the freshness allowance supports investigating caching. It is not evidence that caching will improve this page.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "0436d0f672ebfb41fe61931c5b77d0b5f6a15e0880b911784bbc234b3ffb6954"
+          }
+        },
+        {
+          "mode": "slye",
+          "text": "The suggestion to cache the reports page contains two separate questions. We should separate them before choosing an implementation. First, can we reuse report data that was calculated earlier without breaking the freshness requirement? Second, do we need a separate distributed service to reuse that data? Accepting data that is up to `15 minutes` old makes reuse possible. It does not, by itself, show that a distributed cache is the right first change. We have not measured which part of the current request takes the most time. The delay could come from the report query, preparing the response, or browser work. The same change would not help all of these equally.\n\nThe report's freshness is separate from the freshness of the decision about who may read it. The allowed delay applies to report data, not access permissions. Even if the data comes from a cache, the request must check current access before returning it. Separating cached entries by organization would reduce the chance of mixing organizations' data, but it would not replace authorization. Someone whose access was removed must not keep receiving the report just because a cached result still exists. This does not show that the current implementation has this bug. It states a requirement for any proposed cache.\n\nI recommend measuring a representative request before adding the distributed service. If the report query takes most of the time, and equivalent requests happen often enough for reuse to help, a cache becomes a reasonable option. If preparing the response or browser work takes most of the time, reusing query results may not reduce the main delay. A distributed cache would also add expiration behavior, cache-miss handling, and another service to operate. These are tradeoffs to assess, not proof that caching would be a mistake.\n\nThe measurement has not been run, and we have not implemented a cache or an authorization change. I would reconsider the recommendation after we know where the delay occurs and whether repeated requests actually share reusable results. Until then, the freshness allowance supports investigating caching. It does not show that caching will improve this page.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "ad0161bdf222f324eb1fc72596e064f5e38c8241c04df7ff65b72a48f86cb4fb"
+          }
         }
       ]
     },
@@ -168,23 +313,81 @@
       "variants": [
         {
           "mode": "plain",
-          "text": "## Local recovery procedure\n\nUse this sequence for the local indexer only. Keep incoming work paused until verification is complete; a successful process startup does not prove recovery.\n\n1. Run `indexctl pause --local` and confirm that the status reports paused. If it does not, stop rather than continuing with a moving queue.\n2. Save the recovery inputs:\n   - Copy `var/index/checkpoint.json` to `var/index/checkpoint.backup.json`.\n   - Record the pending item count from `indexctl status --local`.\n   \n   If the checkpoint cannot be copied, stop and investigate before restarting.\n3. Run `indexctl restart --local`. Do not delete the queue directory.\n4. While intake remains paused, verify the recovered queue:\n   - Confirm that the pending item count matches the recorded count.\n   - If it differs, leave intake paused and compare the saved checkpoint with the current one. Do not resume automatically.\n5. Only after the counts match, run `indexctl resume --local`.\n\nKeep the backup until the resumed indexer has processed the pending work. These are instructions, not a report that recovery has already been performed."
+          "text": "## Local recovery procedure\n\nUse this sequence for the local indexer only. Keep incoming work paused until verification is complete; a successful process startup does not confirm recovery.\n\n1. Run `indexctl pause --local` and confirm that the status reports paused. If it does not, stop rather than continuing with a moving queue.\n2. Save the recovery inputs:\n   - Copy `var/index/checkpoint.json` to `var/index/checkpoint.backup.json`.\n   - Record the pending item count shown by `indexctl status --local`. If the checkpoint cannot be copied, stop and investigate before restarting.\n3. Run `indexctl restart --local`. Do not delete the queue directory during this step.\n4. While intake remains paused, verify the recovered queue:\n   - Confirm that the pending item count matches the recorded count.\n   - If it differs, keep intake paused and compare the saved checkpoint with the current one. Do not resume automatically.\n5. After the counts match, run `indexctl resume --local`.\n\nKeep the backup until the resumed indexer has processed the pending work. These are instructions, not a report that recovery has already been performed.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "dcadba54c25fc0b1d8e8cf4e214ee39d03fe39efceef3e155f49b4e00cb4f916"
+          }
         },
         {
           "mode": "terse",
-          "text": "## Local recovery procedure\n\nFor the local indexer only, keep intake paused until verification is complete; successful startup alone does not confirm recovery.\n\n1. Run `indexctl pause --local` and confirm the status reports paused. If not, stop.\n2. Save recovery inputs:\n   - Copy `var/index/checkpoint.json` to `var/index/checkpoint.backup.json`.\n   - Record the pending count from `indexctl status --local`.\n   - If copying fails, stop and investigate before restarting.\n3. Run `indexctl restart --local`. Do not delete the queue directory.\n4. With intake still paused, verify the queue:\n   - Confirm the pending count matches the recorded count.\n   - If it differs, keep intake paused and compare the saved and current checkpoints; do not resume automatically.\n5. Only if the counts match, run `indexctl resume --local`.\n\nKeep the backup until the resumed indexer processes the pending work. These are instructions, not a report that recovery was performed."
+          "text": "## Local recovery procedure\n\nUse this sequence for the local indexer only. Keep incoming work paused until verification is complete; successful process startup alone does not confirm recovery.\n\n1. Run `indexctl pause --local` and confirm the status reports paused. If it does not, stop rather than continuing with a moving queue.\n2. Save the recovery inputs:\n   - Copy `var/index/checkpoint.json` to `var/index/checkpoint.backup.json`.\n   - Record the pending item count shown by `indexctl status --local`. If the checkpoint cannot be copied, stop and investigate before restarting.\n3. Run `indexctl restart --local`. Do not delete the queue directory as part of this step.\n4. While intake remains paused, verify the recovered queue:\n   - Confirm that the pending item count matches the recorded count.\n   - If it differs, leave intake paused, compare the saved checkpoint with the current one, and do not resume automatically.\n5. Only after the counts match, run `indexctl resume --local`.\n\nRetain the backup until the resumed indexer has processed the pending work. These are instructions, not a report that recovery has already been performed.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "d5c0c1e06ea3ea03b4e1ce3b2f3879656880fa2b1dd9205d4dbfb5d709fa975d"
+          }
         },
         {
           "mode": "adhd",
-          "text": "## Local indexer recovery\n\nKeep incoming work paused until verification is complete. Successful process startup alone does not confirm recovery.\n\n1. Run `indexctl pause --local`.\n   - Confirm the status reports paused.\n   - If it does not, stop rather than continuing with a moving queue.\n\n2. Save the recovery inputs.\n   - Copy `var/index/checkpoint.json` to `var/index/checkpoint.backup.json`.\n   - Record the pending item count from `indexctl status --local`.\n   - If the checkpoint cannot be copied, stop and investigate before restarting.\n\n3. Run `indexctl restart --local`.\n   - Do not delete the queue directory.\n\n4. Verify the recovered queue while intake remains paused.\n   - Confirm the pending item count matches the recorded count.\n   - If it differs, leave intake paused and compare the saved checkpoint with the current one. Do not resume automatically.\n\n5. Only after the counts match, run `indexctl resume --local`.\n\nRetain the backup until the resumed indexer has processed the pending work. These are instructions, not a report that recovery has already been performed."
+          "text": "## Local recovery procedure\n\nKeep incoming work paused until verification is complete. Successful process startup is not sufficient evidence of recovery.\n\n1. Run `indexctl pause --local` and confirm that the status reports paused. If it does not, stop rather than continuing with a moving queue.\n2. Save the recovery inputs:\n   - Copy `var/index/checkpoint.json` to `var/index/checkpoint.backup.json`.\n   - Record the pending item count shown by `indexctl status --local`.\n   - If the checkpoint cannot be copied, stop and investigate before restarting.\n3. Run `indexctl restart --local`. Do not delete the queue directory as part of this step.\n4. While intake remains paused, verify the recovered queue:\n   - Confirm that the pending item count matches the recorded count.\n   - If it differs, leave intake paused and compare the saved checkpoint with the current one; do not resume automatically.\n5. Only after the counts match, run `indexctl resume --local`.\n\nRetain the backup until the resumed indexer has processed the pending work. These are instructions, not a report that recovery has already been performed.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "96f21c37d6adbde2e8b083872e35c09e910a94fb54ba85bb2571db4c115b61b9"
+          }
         },
         {
           "mode": "squirrel",
-          "text": "## Local recovery procedure\n\nKeep incoming work paused until verification is complete. Successful process startup alone does not confirm recovery.\n\n1. Run `indexctl pause --local` and confirm the status reports paused. If it does not, stop rather than continuing with a moving queue.\n\n2. Save the recovery inputs:\n   - Copy `var/index/checkpoint.json` to `var/index/checkpoint.backup.json`.\n   - Record the pending item count from `indexctl status --local`.\n   - If the checkpoint cannot be copied, stop and investigate before restarting.\n\n3. Run `indexctl restart --local`. Do not delete the queue directory.\n\n4. While intake remains paused, verify that the recovered queue’s pending item count matches the recorded count. If it differs, leave intake paused and compare the saved checkpoint with the current one; do not resume automatically.\n\n5. Only after the counts match, run `indexctl resume --local`.\n\nRetain the backup until the resumed indexer has processed the pending work. These are instructions, not a report that recovery has already been performed."
+          "text": "## Local recovery procedure\n\nUse this sequence for the local indexer only. Keep incoming work paused until verification is complete; successful process startup is not sufficient evidence of recovery.\n\n1. Run `indexctl pause --local` and confirm that the status reports paused. If it does not, stop here rather than continuing with a moving queue.\n2. Save the recovery inputs:\n   - Copy `var/index/checkpoint.json` to `var/index/checkpoint.backup.json`.\n   - Record the pending item count shown by `indexctl status --local`. If the checkpoint cannot be copied, stop and investigate before restarting.\n3. Run `indexctl restart --local`. Do not delete the queue directory as part of this step.\n4. While intake remains paused, verify the recovered queue:\n   - Confirm that the pending item count matches the recorded count.\n   - If it differs, leave intake paused and compare the saved checkpoint with the current one; do not resume automatically.\n5. Only after the counts match, run `indexctl resume --local`.\n\nRetain the backup until the resumed indexer has processed the pending work. These are instructions, not a report that recovery has already been performed.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "6be86544dfebbc249a3a8e94cec6faf3732af1e299674640a42bce7d0ab4438e"
+          }
         },
         {
           "mode": "ste",
-          "text": "## Local Recovery Procedure\n\nUse this procedure for the local indexer only. Keep incoming work paused until verification is complete. Successful process startup does not prove recovery.\n\n1. Run `indexctl pause --local`.\n2. Confirm that the status reports paused. If it does not, stop. Do not continue with a moving queue.\n3. Save the recovery inputs:\n   - Copy `var/index/checkpoint.json` to `var/index/checkpoint.backup.json`.\n   - Record the pending item count from `indexctl status --local`.\n   - If the checkpoint cannot be copied, stop and investigate before restarting.\n4. Run `indexctl restart --local`. Do not delete the queue directory.\n5. Keep intake paused and verify the recovered queue:\n   - Confirm that the pending item count matches the recorded count.\n   - If the count differs, leave intake paused.\n   - Compare the saved checkpoint with the current checkpoint.\n   - Do not resume automatically.\n6. Run `indexctl resume --local` only after the counts match.\n\nRetain the backup until the resumed indexer has processed the pending work.\n\nThese are instructions. They do not report that recovery has already been performed."
+          "text": "## Local recovery procedure\n\nUse this sequence for the local indexer only. Keep incoming work paused until verification is complete. Successful process startup does not prove recovery.\n\n1. Run `indexctl pause --local`. Confirm that the status reports paused. If it does not, stop and do not continue with a moving queue.\n2. Save the recovery inputs:\n   - Copy `var/index/checkpoint.json` to `var/index/checkpoint.backup.json`.\n   - Record the pending item count from `indexctl status --local`. If you cannot copy the checkpoint, stop and investigate before restarting.\n3. Run `indexctl restart --local`. Do not delete the queue directory during this step.\n4. Keep intake paused and verify the recovered queue:\n   - Confirm that the pending item count matches the recorded count.\n   - If the count differs, keep intake paused and compare the saved checkpoint with the current checkpoint. Do not resume automatically.\n5. Run `indexctl resume --local` only after the counts match.\n\nRetain the backup until the resumed indexer has processed the pending work. These are instructions, not a report that recovery has already occurred.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "0436d0f672ebfb41fe61931c5b77d0b5f6a15e0880b911784bbc234b3ffb6954"
+          }
+        },
+        {
+          "mode": "slye",
+          "text": "## Local recovery procedure\nUse this sequence for the local indexer only. Keep incoming work paused until verification is complete. A successful process startup does not confirm recovery.\n\n1. Run `indexctl pause --local` and confirm that the status says paused. If it does not, stop instead of continuing with a moving queue.\n2. Save the recovery inputs:\n   - Copy `var/index/checkpoint.json` to `var/index/checkpoint.backup.json`.\n   - Record the pending item count shown by `indexctl status --local`. If the checkpoint cannot be copied, stop and investigate before restarting.\n3. Run `indexctl restart --local`. Do not delete the queue directory during this step.\n4. While intake is paused, verify the recovered queue:\n   - Confirm that the pending item count matches the recorded count.\n   - If it differs, keep intake paused and compare the saved checkpoint with the current one. Do not resume automatically.\n5. Run `indexctl resume --local` only after the counts match.\n\nKeep the backup until the resumed indexer has processed the pending work. These are instructions, not a report that recovery has already been performed.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "ad0161bdf222f324eb1fc72596e064f5e38c8241c04df7ff65b72a48f86cb4fb"
+          }
         }
       ]
     },
@@ -212,31 +415,81 @@
       "variants": [
         {
           "mode": "plain",
-          "text": "## Processing options\n\nThis comparison describes behavior, not measured throughput. Neither option has been benchmarked with the current image set.\n\n| Concern | Inline processing | Queued processing |\n| --- | --- | --- |\n| Response meaning | The thumbnail is ready when the request succeeds | The job is accepted; the thumbnail may still be pending |\n| Failure visibility | Processing failures are returned in the request | Processing failures must be exposed through job status |\n| Service ownership | No separate worker to operate | The worker and queue require operation |\n| Traffic bursts | Requests use processing capacity immediately | Pending jobs can wait, increasing completion delay |\n\nI recommend inline processing for the initial version if its measured request duration fits the caller's timeout. This avoids introducing a worker before we know one is needed. Choose queued processing if that duration cannot fit and callers can handle a pending result. A queue changes where waiting occurs; it does not by itself make image processing faster.\n\nThe next useful step is to measure a representative duration, not to make a throughput claim based on the architecture alone.",
+          "text": "The comparison describes behavior, not measured throughput. Neither option has been benchmarked with the current image set.\n\n| Concern | Inline processing | Queued processing |\n| --- | --- | --- |\n| Response meaning | The thumbnail is ready when the request succeeds | The job is accepted, but the thumbnail may still be pending |\n| Failure visibility | Processing failures are returned in the request | Processing failures must be exposed through job status |\n| Service ownership | No separate worker is required | The worker and queue must be operated |\n| Traffic bursts | Requests use processing capacity immediately | Pending jobs can wait, increasing completion delay |\n\nUse inline processing for the initial version if its measured request duration fits the caller’s timeout. This avoids adding a worker before it is needed. Use queued processing if the duration does not fit and callers can handle a pending result. A queue changes where waiting occurs; it does not automatically make image processing faster.\n\nThe next useful step is to measure duration with a representative image set, not to infer throughput from the architecture.",
           "recording": {
-            "runId": "2026-09-12T00-39-56-684Z-9b25936e-baseline",
-            "recordedAt": "2026-09-12T00:39:56.684Z",
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
             "model": "openai-codex/gpt-5.6-luna",
-            "promptVersion": "plain-lab-2",
+            "promptVersion": "package-styles-8",
             "context": "answer",
-            "promptSource": "plain-lab-2"
+            "promptSource": "package-v4",
+            "systemHash": "dcadba54c25fc0b1d8e8cf4e214ee39d03fe39efceef3e155f49b4e00cb4f916"
           }
         },
         {
           "mode": "terse",
-          "text": "## Processing options\n\nThis comparison describes behavior, not measured throughput. Neither option has been benchmarked with the current image set.\n\n| Concern | Inline processing | Queued processing |\n| --- | --- | --- |\n| Response meaning | Thumbnail is ready when the request succeeds | Job is accepted; thumbnail may still be pending |\n| Failure visibility | Processing failure is returned in the request | Processing failure must be exposed through job status |\n| Service ownership | No separate worker to operate | Worker and queue require operation |\n| Traffic bursts | Requests occupy processing capacity immediately | Pending jobs can wait, increasing completion delay |\n\nUse inline processing initially if its measured request duration fits the caller's timeout; this avoids introducing a worker before one is needed. Use queued processing if it cannot fit and callers can handle a pending result. A queue changes where waiting occurs; it does not by itself make image processing faster.\n\nThe next useful step is measuring representative duration, not inferring throughput from the architecture alone."
+          "text": "## Processing options\n\nThe following comparison describes behavior, not measured throughput. Neither option has been benchmarked with the current image set.\n\n| Concern | Inline processing | Queued processing |\n| --- | --- | --- |\n| Response meaning | Thumbnail is ready when the request succeeds | Job is accepted; thumbnail may still be pending |\n| Failure visibility | Processing failure is returned in the request | Processing failure must be exposed through job status |\n| Service ownership | No separate worker to operate | Worker and queue require operation |\n| Traffic bursts | Requests occupy processing capacity immediately | Pending jobs can wait, increasing completion delay |\n\nI recommend inline processing initially if its measured request duration fits the caller’s timeout. This avoids introducing a worker before we know one is needed. Choose queued processing if that duration cannot fit and callers can handle a pending result. A queue changes where waiting occurs; it does not by itself make image processing faster. The next useful step is measuring representative duration, not claiming throughput from the architecture alone.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "d5c0c1e06ea3ea03b4e1ce3b2f3879656880fa2b1dd9205d4dbfb5d709fa975d"
+          }
         },
         {
           "mode": "adhd",
-          "text": "## Measure first\n\nNo benchmark exists for the current image set. Measure representative processing duration before choosing the endpoint contract; architecture alone does not establish throughput.\n\n| Concern | Inline processing | Queued processing |\n| --- | --- | --- |\n| Response meaning | Thumbnail is ready when the request succeeds | Job is accepted; thumbnail may still be pending |\n| Failure visibility | Processing failure is returned in the request | Processing failure must be exposed through job status |\n| Service ownership | No separate worker to operate | Worker and queue require operation |\n| Traffic bursts | Requests occupy processing capacity immediately | Pending jobs can wait, increasing completion delay |\n\n## Recommendation\n\n- Choose **inline processing** for the initial version if its measured request duration fits the caller's timeout. This avoids introducing a worker before knowing one is needed.\n- Choose **queued processing** if that duration cannot fit and callers can handle a pending result.\n\nA queue changes where waiting occurs; it does not by itself make image processing faster."
+          "text": "## Next step\n\nMeasure representative request duration. This is not a throughput benchmark, and neither option has been benchmarked with the current image set.\n\n## Processing options\n\n| Concern | Inline processing | Queued processing |\n| --- | --- | --- |\n| Response meaning | Thumbnail is ready when the request succeeds | Job is accepted; thumbnail may still be pending |\n| Failure visibility | Processing failure is returned in the request | Processing failure must be exposed through job status |\n| Service ownership | No separate worker to operate | Worker and queue require operation |\n| Traffic bursts | Requests occupy processing capacity immediately | Pending jobs can wait, increasing completion delay |\n\n- Use inline processing for the initial version if its measured request duration fits the caller's timeout. This avoids introducing a worker before we know one is needed.\n- Use queued processing if that duration cannot fit and callers can handle a pending result.\n- A queue changes where waiting occurs; it does not by itself make image processing faster.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "96f21c37d6adbde2e8b083872e35c09e910a94fb54ba85bb2571db4c115b61b9"
+          }
         },
         {
           "mode": "squirrel",
-          "text": "## Recommendation\n\n1. Use **inline processing** for the initial version if its measured request duration fits the caller’s timeout.\n\n2. This avoids introducing a worker before we know one is needed.\n\n3. Choose **queued processing** if that duration cannot fit and callers can handle a pending result.\n\n4. A queue changes where waiting occurs; it does not by itself make image processing faster.\n\n5. The next useful step is a representative duration measurement, not a throughput claim based on the architecture alone.\n\n## Comparison\n\n| Concern | Inline processing | Queued processing |\n| --- | --- | --- |\n| Response meaning | Thumbnail is ready when the request succeeds | Job is accepted; thumbnail may still be pending |\n| Failure visibility | Processing failure is returned in the request | Processing failure must be exposed through job status |\n| Service ownership | No separate worker to operate | Worker and queue require operation |\n| Traffic bursts | Requests occupy processing capacity immediately | Pending jobs can wait, increasing completion delay |\n\nNeither option has been benchmarked with the current image set. This comparison describes behavior, not measured throughput."
+          "text": "## Processing options\n\nThis comparison describes behavior, not measured throughput. Neither option has been benchmarked with the current image set.\n\n| Concern | Inline processing | Queued processing |\n| --- | --- | --- |\n| Response meaning | Thumbnail is ready when the request succeeds | Job is accepted; thumbnail may still be pending |\n| Failure visibility | Processing failure is returned in the request | Processing failure must be exposed through job status |\n| Service ownership | No separate worker to operate | Worker and queue require operation |\n| Traffic bursts | Requests occupy processing capacity immediately | Pending jobs can wait, increasing completion delay |\n\nI recommend inline processing for the initial version if its measured request duration fits the caller's timeout. This avoids introducing a worker before we know one is needed.\n\nChoose queued processing if that duration cannot fit and callers can handle a pending result. A queue changes where waiting occurs; it does not by itself make image processing faster.\n\nThe next useful step is a representative duration measurement, not a throughput claim based on the architecture alone.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "6be86544dfebbc249a3a8e94cec6faf3732af1e299674640a42bce7d0ab4438e"
+          }
         },
         {
           "mode": "ste",
-          "text": "## Processing options\n\nThis comparison describes behavior, not measured throughput. Neither option has been benchmarked with the current image set.\n\n| Concern | Inline processing | Queued processing |\n| --- | --- | --- |\n| Response meaning | The thumbnail is ready when the request succeeds. | The job is accepted. The thumbnail may still be pending. |\n| Failure visibility | The request returns processing failure. | Job status must expose processing failure. |\n| Service ownership | No separate worker requires operation. | The worker and queue require operation. |\n| Traffic bursts | Requests immediately occupy processing capacity. | Pending jobs can wait, which increases completion delay. |\n\nI recommend inline processing for the initial version if measured request duration fits the caller's timeout. This avoids introducing a worker before we know one is needed.\n\nChoose queued processing if request duration cannot fit the caller's timeout and callers can handle a pending result.\n\nA queue changes where waiting occurs. It does not, by itself, make image processing faster.\n\nThe next useful step is a representative duration measurement. The architecture alone cannot support a throughput claim."
+          "text": "## Processing options\n\nThe comparison below describes behavior, not measured throughput. Neither option has been benchmarked with the current image set.\n\n| Concern | Inline processing | Queued processing |\n| --- | --- | --- |\n| Response meaning | The thumbnail is ready when the request succeeds. | The job is accepted. The thumbnail may still be pending. |\n| Failure visibility | The request returns processing failure. | Job status must expose processing failure. |\n| Service ownership | No separate worker requires operation. | The worker and queue require operation. |\n| Traffic bursts | Requests immediately occupy processing capacity. | Pending jobs can wait, which increases completion delay. |\n\nI recommend inline processing for the initial version if its measured request duration fits the caller's timeout. This avoids introducing a worker before we know that one is needed.\n\nChoose queued processing if the measured duration cannot fit the timeout and callers can handle a pending result. A queue changes where waiting occurs. It does not make image processing faster by itself.\n\nThe next useful step is to measure a representative duration. Do not make a throughput claim based on the architecture alone.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "0436d0f672ebfb41fe61931c5b77d0b5f6a15e0880b911784bbc234b3ffb6954"
+          }
+        },
+        {
+          "mode": "slye",
+          "text": "## Processing options\nThis comparison describes behavior, not measured throughput. Neither option has been benchmarked with the current image set.\n\n| Concern | Inline processing | Queued processing |\n| --- | --- | --- |\n| Response meaning | The thumbnail is ready when the request succeeds | The job is accepted; the thumbnail may still be pending |\n| Failure visibility | The request returns processing failure | Job status must show processing failure |\n| Service ownership | No separate worker to operate | The worker and queue require operation |\n| Traffic bursts | Requests use processing capacity immediately | Pending jobs can wait, increasing completion delay |\n\nI recommend inline processing for the initial version if its measured request duration fits the caller's timeout. This avoids adding a worker before we know one is needed. Choose queued processing if that duration does not fit and callers can handle a pending result. A queue changes where waiting occurs; it does not make image processing faster by itself. The next useful step is to measure duration with representative data, not to claim throughput from the architecture alone.",
+          "recording": {
+            "runId": "2026-09-13T00-55-53-142Z-d273f1f1",
+            "recordedAt": "2026-09-13T00:55:53.143Z",
+            "model": "openai-codex/gpt-5.6-luna",
+            "promptVersion": "package-styles-8",
+            "context": "answer",
+            "promptSource": "package-v4",
+            "systemHash": "ad0161bdf222f324eb1fc72596e064f5e38c8241c04df7ff65b72a48f86cb4fb"
+          }
         }
       ]
     }

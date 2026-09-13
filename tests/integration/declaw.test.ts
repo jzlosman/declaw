@@ -6,13 +6,14 @@ import { fileURLToPath } from 'node:url';
 import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { readModelChoice, saveModelChoice, DEFAULT_MODEL, readStyleChoice, saveStyleChoice } from '../../src/adapters/settings.ts';
-import { buildStyleRequest, DEFAULT_STYLE_ID, STYLE_IDS, REWRITE_POLICY_VERSION } from '../../src/domain/styles.ts';
+import { buildStyleRequest, DEFAULT_REWRITE_GUIDANCE, DEFAULT_STYLE_ID, STYLE_IDS, REWRITE_POLICY_VERSION } from '../../src/domain/styles.ts';
 import { BUILTIN_CATALOG, STYLES } from '../../src/plugins/built-in/catalog.ts';
 import { supportsLowThinking } from '../../src/adapters/model.ts';
-import { rewriteAnswer,
-  MAX_INPUT_CHARS, ENTRY_TYPE, TIMEOUT_MS, REWRITE_PROVIDER, REWRITE_MODEL, REWRITE_THINKING, POLICY_VERSION } from '../../src/domain/rewrite.ts';
+import { prepareRewrite, finalizeRewrite,
+  MAX_INPUT_CHARS, MAX_OUTPUT_CHARS, ENTRY_TYPE, REWRITE_PROVIDER, REWRITE_MODEL, REWRITE_THINKING, POLICY_VERSION } from '../../src/domain/rewrite.ts';
+import { REWRITE_TIMEOUT_MS as TIMEOUT_MS } from '../../src/application/rewrite.ts';
 import { completedText, latestAnswer, isolatedRequest, SYSTEM_PROMPT } from '../../src/adapters/pi.ts';
-import { rewriteText } from '../../src/domain/preservation.ts';
+import { registerDeclawPlugin, clearDeclawPluginBridgeForTests } from '../../src/plugin-api.ts';
 
 // Override when Pi is installed outside this Node executable's global prefix.
 const packagePath = join(resolve(process.env.PI_PACKAGE_ROOT ?? join(dirname(process.execPath),
@@ -30,14 +31,13 @@ const mainModel = { ...model, id: 'gpt-6-astra' };
 const rewrittenMock = (text: string) => text.replace(/^The service uses /, 'This service uses ');
 const requestTarget = (context: any): string => {
   const payload = context.messages[0].content;
-  return payload.startsWith('Context:\n\n\nTarget:\n')
-    ? payload.slice('Context:\n\n\nTarget:\n'.length) : JSON.parse(payload).assistantMessage;
+  if (payload.startsWith('Context:\n\n\nTarget:\n')) return payload.slice('Context:\n\n\nTarget:\n'.length);
+  return JSON.parse(payload).assistantMessage;
 };
 const answer = (text = 'The service uses `config.json` and waits 25 seconds.', extra = {}): any => ({
   role: 'assistant', content: [{ type: 'text', text }], stopReason: 'stop',
   api: model.api, provider: model.provider, model: model.id, timestamp: 1, ...extra,
 });
-const tokens = (text: string) => text.match(/⟦KEEP_[^⟧]+⟧/g) ?? [];
 function deferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason: unknown) => void;
@@ -148,42 +148,32 @@ async function harness(t: any, seed = true, existingAgentDir?: string) {
   return h;
 }
 
-test('protected spans round-trip exactly, including fences, CRLF, Unicode and replacement syntax', async () => {
-  const spans = ['`a$&b`', '``a`b``', '"exact words"', '“curly quotation”', "'single quotation'",
-    '[guide](https://example.test/a)', 'https://example.test/x?q=1', '/tmp/a.txt', './src/file.ts',
-    'C:\\work\\file.ts', 'config.yaml', '25', '-3.5%', 'npm test -- --run',
-    '```ts\r\nconst x = "$&";\r\n```', '~~~sh\necho exact\n~~~', '```\nunclosed fence'];
-  for (const span of spans) {
-    const original = `Preserve this:\n${span}\nRésumé remains unchanged.\n`;
-    let count = 0;
-    assert.equal(await rewriteText(original, async (masked) => {
-      count++;
-      assert.ok(tokens(masked).length > 0, span);
-      // Random placeholder IDs can themselves contain numeric spans such as "25".
-      assert.ok(!masked.replace(/⟦KEEP_[^⟧]+⟧/g, '').includes(span), span);
-      return masked;
-    }), original, span);
-    assert.equal(count, 1);
-  }
-  assert.equal(await rewriteText('Already clear.', async (text) => text), 'Already clear.');
-});
-
-test('rejects missing, duplicated, reordered, altered and invented placeholders', async () => {
-  const mutations = [
-    (s: string, ts: string[]) => s.replace(ts[0], ''),
-    (s: string, ts: string[]) => s + ts[0],
-    (s: string, ts: string[]) => s.replace(ts[0], 'SWAP').replace(ts[1], ts[0]).replace('SWAP', ts[1]),
-    (s: string, ts: string[]) => s.replace(ts[0], ts[0].replace('KEEP_', 'KEPT_')),
-    (s: string) => s + ' ⟦KEEP_invented_0⟧',
-  ];
-  for (const mutate of mutations) {
-    await assert.rejects(rewriteText('Use `one` before `two`.', async (s) => mutate(s, tokens(s))), /preservation/);
-  }
-  for (const added of ['99', '`invented`', '/new/path', 'https://new.test', '"invented quote"', '```\ncode\n```']) {
-    await assert.rejects(rewriteText('Clear prose.', async (s) => `${s}\n${added}`), /preservation/);
-  }
-  for (const output of ['', '   ', 'x'.repeat(64001)]) {
-    await assert.rejects(rewriteText('Clear prose.', async () => output), /empty-or-oversize/);
+test('native envelopes receive raw literals, fences, CRLF and Unicode without masking or source mutation', async (t) => {
+  const source = ['The service uses `a$&b` and ``a`b``.', '"exact words" “curly quotation”',
+    '[guide](https://example.test/a)', 'https://example.test/x?q=1', '/tmp/a.txt ./src/file.ts',
+    'C:\\work\\file.ts config.yaml', '25 seconds -3.5% npm test -- --run',
+    '```ts\r\nconst x = "$&";\r\n```', '~~~sh\necho exact\n~~~',
+    'Résumé ⟦KEEP_source_literal_0⟧', '```\nunclosed fence'].join('\r\n');
+  for (const style of STYLE_IDS) {
+    await t.test(style, async (t) => {
+      const h = await harness(t);
+      const sourceId = h.sm.appendMessage(answer(source));
+      const before = structuredClone(h.sm.buildSessionContext().messages);
+      h.complete = async (_m: any, context: any) => {
+        assert.equal(requestTarget(context), source, 'plugin receives every source character');
+        const expectedPayload = style === 'slye' ? `Context:\n\n\nTarget:\n${source}`
+          : JSON.stringify({ assistantMessage: source });
+        assert.equal(context.messages[0].content, expectedPayload);
+        assert.doesNotMatch(JSON.stringify(context), /PRIVATE_/);
+        return answer(rewrittenMock(source));
+      };
+      await h.run(style);
+      assert.equal(h.calls.length, 1);
+      assert.equal(h.entries().length, 1);
+      assert.equal(h.entries()[0].data.sourceEntryId, sourceId);
+      assert.equal(h.entries()[0].data.text, rewrittenMock(source));
+      assert.deepEqual(h.sm.buildSessionContext().messages, before);
+    });
   }
 });
 
@@ -205,7 +195,7 @@ test('latest answer skips non-assistant entries but never falls back past a fail
 
 test('isolated requests have fresh session IDs and no ambient context', () => {
   const signal = new AbortController().signal;
-  const a = isolatedRequest('masked only', model, signal), b = isolatedRequest('masked only', model, signal);
+  const a = isolatedRequest('Raw `config.json` and 25 seconds.', model, signal), b = isolatedRequest('Raw `config.json` and 25 seconds.', model, signal);
   assert.notEqual(a.options.sessionId, b.options.sessionId);
   assert.equal(a.options.signal, signal);
   assert.equal(a.options.cacheRetention, 'none');
@@ -215,17 +205,24 @@ test('isolated requests have fresh session IDs and no ambient context', () => {
   assert.equal(a.context.systemPrompt, SYSTEM_PROMPT);
   assert.deepEqual(a.context.tools, []);
   assert.equal(a.context.messages.length, 1);
-  assert.equal(a.context.messages[0].content, JSON.stringify({ assistantMessage: 'masked only' }));
+  assert.equal(a.context.messages[0].content, JSON.stringify({ assistantMessage: 'Raw `config.json` and 25 seconds.' }));
 });
 
-test('real command calls once with only masked answer; renders durable entry outside model context', async (t) => {
+test('real command calls once with the raw answer and persists its result outside model context', async (t) => {
   const h = await harness(t);
   const before = structuredClone(h.sm.buildSessionContext().messages);
   const sourceId = latestAnswer(h.sm.getBranch())!.id;
+  h.complete = async (_m: any, c: any) => {
+    assert.equal(h.entries().length, 0, 'no rewrite is published before completion');
+    return answer(rewrittenMock(requestTarget(c)));
+  };
   await h.run();
   assert.equal(h.calls.length, 1);
+  assert.deepEqual(h.findCalls, [[model.provider, model.id]]);
+  assert.deepEqual(h.providerCalls, [model.provider]);
+  assert.deepEqual(h.authCalls, [model]);
   const [selected, context, options] = h.calls[0];
-  assert.equal(selected, model);
+  assert.deepEqual(selected, model);
   assert.equal(selected.id, 'gpt-5.6-luna');
   assert.equal(options.reasoning, 'low');
   assert.equal(h.ctx.model, mainModel);
@@ -237,14 +234,13 @@ test('real command calls once with only masked answer; renders durable entry out
   assert.equal(context.messages[0].role, 'user');
   const payload = JSON.parse(context.messages[0].content);
   assert.deepEqual(Object.keys(payload), ['assistantMessage']);
-  assert.match(payload.assistantMessage, /^The service uses ⟦KEEP_/);
-  assert.equal(tokens(payload.assistantMessage).length, 2);
-  assert.doesNotMatch(JSON.stringify(context), /PRIVATE_/);
-  assert.doesNotMatch(payload.assistantMessage.replace(/⟦KEEP_[^⟧]+⟧/g, ''), /config\.json|25/);
+  assert.equal(payload.assistantMessage, answer().content[0].text);
+  assert.doesNotMatch(JSON.stringify(context), /PRIVATE_|FAKE/);
   assert.notEqual(options.sessionId, h.sm.getSessionId());
   assert.equal(h.entries().length, 1);
   assert.equal(h.entries()[0].data.sourceEntryId, sourceId);
   assert.equal(h.entries()[0].data.text, rewrittenMock(answer().content[0].text));
+  assert.match(h.rendered.join(' '), /This service uses/);
   assert.equal(h.entries()[0].data.model, `${REWRITE_PROVIDER}/${REWRITE_MODEL}`);
   assert.equal(h.entries()[0].data.thinkingLevel, REWRITE_THINKING);
   assert.equal(h.entries()[0].data.version, REWRITE_POLICY_VERSION);
@@ -258,9 +254,10 @@ test('real command calls once with only masked answer; renders durable entry out
   assert.deepEqual(h.ctx.sessionManager.buildSessionContext().messages, before);
   h.ctx.sessionManager.appendCompaction('Safe summary.', sourceId, 100);
   const compacted = h.ctx.sessionManager.buildSessionContext().messages;
+  h.complete = async (_m: any, c: any) => answer(rewrittenMock(requestTarget(c)));
   await h.run();
   assert.equal(h.calls.length, 2);
-  assert.notEqual(h.calls[0][2].sessionId, h.calls[1][2].sessionId);
+  assert.equal(new Set(h.calls.map((call: any[]) => call[2].sessionId)).size, 2);
   assert.deepEqual(h.ctx.sessionManager.buildSessionContext().messages, compacted);
   assert.deepEqual(reload(h.ctx.sessionManager).buildSessionContext().messages, compacted);
   assert.equal(h.entries().length, 2);
@@ -283,13 +280,31 @@ test('guards prevent model calls in busy, non-TUI, no-answer, no-auth, no-model 
   }
 });
 
+test('input and output limits are inclusive operational bounds, not technical-content checks', async (t) => {
+  assert.equal(MAX_INPUT_CHARS, 32_000);
+  assert.equal(MAX_OUTPUT_CHARS, 64_000);
+  const h = await harness(t);
+  const source = 'x'.repeat(MAX_INPUT_CHARS);
+  const output = 'y'.repeat(MAX_OUTPUT_CHARS);
+  const sourceId = h.sm.appendMessage(answer(source));
+  const before = structuredClone(h.sm.buildSessionContext().messages);
+  h.complete = async () => answer(output);
+  await h.run();
+  assert.equal(h.calls.length, 1);
+  assert.equal(requestTarget(h.calls[0][1]), source);
+  assert.equal(h.entries().length, 1);
+  assert.equal(h.entries()[0].data.sourceEntryId, sourceId);
+  assert.equal(h.entries()[0].data.text, output);
+  assert.deepEqual(h.sm.buildSessionContext().messages, before);
+});
+
 test('Luna selection works without a main model and never changes main thinking', async (t) => {
   const h = await harness(t);
   h.ctx.model = undefined;
   h.ctx.thinkingLevel = 'max';
   await h.run();
   assert.equal(h.calls.length, 1);
-  assert.equal(h.calls[0][0], model);
+  assert.deepEqual(h.calls[0][0], model);
   assert.equal(h.calls[0][2].reasoning, 'low');
   assert.equal(h.ctx.model, undefined);
   assert.equal(h.ctx.thinkingLevel, 'max');
@@ -309,33 +324,57 @@ test('model configuration cannot silently remap low thinking or fall back to Ast
 
 test('unchanged model output is reported without adding a duplicate or automatically retrying', async (t) => {
   const h = await harness(t);
-  h.complete = async (_m: any, c: any) => answer(JSON.parse(c.messages[0].content).assistantMessage);
+  h.complete = async (_m: any, c: any) => answer(requestTarget(c));
   await h.run();
   assert.equal(h.calls.length, 1);
   assert.equal(h.entries().length, 0);
-  assert.match(h.notices.join(' '), /unchanged text/);
-  await assert.rejects(rewriteAnswer('Already clear.', async () => '\nAlready clear.\n'), /unchanged text/);
+  assert.match(h.notices.join(' '), /unchanged/);
+  const prepared = prepareRewrite('Already clear.');
+  assert.equal(prepared.kind, 'ready');
+  if (prepared.kind === 'ready') assert.deepEqual(finalizeRewrite(prepared.plan, '\nAlready clear.\n'),
+    { kind: 'rejected', reason: 'unchanged' });
 });
 
-test('malformed, truncated, tool-call and preservation failures never append or expose payloads', async (t) => {
-  for (const response of [null, {}, answer('partial', { stopReason: 'length' }),
-    answer('PRIVATE_OUTPUT', { content: [...answer('PRIVATE_OUTPUT').content,
+test('malformed, incomplete, empty and oversized provider output fails without retries or source mutation', async (t) => {
+  const failures: Record<string, () => any> = {
+    throw: () => { throw new Error('PRIVATE_PROVIDER_PAYLOAD'); },
+    null: () => null,
+    malformed: () => ({}),
+    'invalid-content': () => answer('', { content: null }),
+    truncated: () => answer('PRIVATE_PARTIAL', { stopReason: 'length' }),
+    aborted: () => answer('PRIVATE_PARTIAL', { stopReason: 'aborted' }),
+    'tool-call': () => answer('PRIVATE_OUTPUT', { content: [...answer('PRIVATE_OUTPUT').content,
       { type: 'toolCall', id: 'x', name: 'bash', arguments: {} }] }),
-    answer('PRIVATE_OUTPUT', { errorMessage: 'PRIVATE_ERROR' }), answer('Missing protected spans.'),
-    answer('', { content: [{ type: 'thinking', thinking: 'PRIVATE_REASONING' }] })]) {
-    const h = await harness(t);
-    h.complete = async () => response;
-    await h.run();
-    assert.equal(h.calls.length, 1);
-    assert.equal(h.entries().length, 0);
-    assert.ok(h.notices.length > 0);
-    assert.doesNotMatch(h.notices.join(' '), /PRIVATE_/);
+    error: () => answer('PRIVATE_OUTPUT', { errorMessage: 'PRIVATE_ERROR' }),
+    empty: () => answer(''),
+    whitespace: () => answer('   '),
+    oversize: () => answer('x'.repeat(MAX_OUTPUT_CHARS + 1)),
+    'thinking-only': () => answer('', { content: [{ type: 'thinking', thinking: 'PRIVATE_REASONING' }] }),
+  };
+  for (const [failure, response] of Object.entries(failures)) {
+    await t.test(failure, async (t) => {
+      const h = await harness(t);
+      const source = 'PRIVATE_SOURCE uses `config.json` and waits 25 seconds.';
+      const sourceId = h.sm.appendMessage(answer(source));
+      const before = structuredClone(h.sm.buildSessionContext().messages);
+      h.complete = async (_m: any, context: any) => {
+        assert.equal(requestTarget(context), source);
+        assert.equal(h.entries().length, 0);
+        return response();
+      };
+      await h.run();
+      assert.equal(h.calls.length, 1);
+      assert.equal(requestTarget(h.calls[0][1]), source, 'failure still used the raw selected source');
+      assert.equal(h.entries().length, 0);
+      assert.equal(h.rendered.length, 0);
+      assert.deepEqual(latestAnswer(h.sm.getBranch()), { id: sourceId, text: source });
+      assert.deepEqual(h.sm.buildSessionContext().messages, before);
+      assert.ok(h.notices.length > 0);
+      assert.doesNotMatch(h.notices.join(' '), /PRIVATE_|config\.json|25/);
+      assert.match(h.notices.join(' '), /original is unchanged/i);
+    });
   }
-  await assert.rejects(rewriteAnswer('Plain.', async () => { throw new Error('PRIVATE_PROVIDER_PAYLOAD'); }),
-    (error: any) => !error.message.includes('PRIVATE_'));
-  let called = false;
-  await assert.rejects(rewriteAnswer('x'.repeat(MAX_INPUT_CHARS + 1), async () => { called = true; return answer(); }), /too long/);
-  assert.equal(called, false);
+  assert.deepEqual(prepareRewrite('x'.repeat(MAX_INPUT_CHARS + 1)), { kind: 'rejected', reason: 'source-too-long' });
 });
 
 test('cancellation and lifecycle events release active request and discard late provider results', async (t) => {
@@ -353,12 +392,14 @@ test('cancellation and lifecycle events release active request and discard late 
       else await h.emit(event);
       await pending;
       assert.equal(h.calls[0][2].signal.aborted, true);
+      assert.equal(h.calls.length, 1, 'cancellation does not trigger another request');
       assert.equal(h.entries().length, 0);
-      h.complete = async (_m: any, c: any) => answer(rewrittenMock(JSON.parse(c.messages[0].content).assistantMessage));
+      h.complete = async (_m: any, c: any) => answer(rewrittenMock(requestTarget(c)));
       await h.run();
       assert.equal(h.entries().length, 1, 'next invocation succeeds even while old provider hangs');
-      finish(answer(JSON.parse(h.calls[0][1].messages[0].content).assistantMessage));
+      finish(answer(rewrittenMock(requestTarget(h.calls[0][1]))));
       await h.results[0];
+      assert.equal(h.calls.length, 2, 'late results cannot trigger another request');
       assert.equal(h.entries().length, 1, 'late result was not published');
     });
   }
@@ -366,12 +407,16 @@ test('cancellation and lifecycle events release active request and discard late 
 
 test('timeout discards late rejection, reports safe error, and releases the next request', async (t) => {
   const h = await harness(t);
+  assert.equal(TIMEOUT_MS, 60_000);
   t.mock.timers.enable({ apis: ['setTimeout'] });
   let rejectLate: any;
   h.complete = () => new Promise((_resolve, reject) => { rejectLate = reject; });
   const pending = h.run();
   await h.waitForCall();
-  t.mock.timers.tick(TIMEOUT_MS);
+  t.mock.timers.tick(TIMEOUT_MS - 1);
+  assert.equal(h.calls[0][2].signal.aborted, false);
+  assert.equal(h.entries().length, 0);
+  t.mock.timers.tick(1);
   await pending;
   assert.equal(h.entries().length, 0);
   assert.equal(h.calls[0][2].signal.aborted, true);
@@ -379,14 +424,15 @@ test('timeout discards late rejection, reports safe error, and releases the next
   rejectLate(new Error('PRIVATE_LATE_PROVIDER_REJECTION'));
   await assert.rejects(h.results[0], /PRIVATE_LATE_PROVIDER_REJECTION/);
   assert.doesNotMatch(h.notices.join(' '), /PRIVATE_/);
-  h.complete = async (_m: any, c: any) => answer(rewrittenMock(JSON.parse(c.messages[0].content).assistantMessage));
+  h.complete = async (_m: any, c: any) => answer(rewrittenMock(requestTarget(c)));
   await h.run();
+  assert.equal(h.calls.length, 2);
   assert.equal(h.entries().length, 1);
   t.mock.timers.reset();
 });
 
-test('session replacement or a newer answer suppresses stale publication without lifecycle event', async (t) => {
-  for (const change of ['session', 'answer', 'busy']) {
+test('session replacement or a newer answer identity suppresses stale publication without lifecycle event', async (t) => {
+  for (const change of ['session', 'answer', 'same-answer', 'busy']) {
     const h = await harness(t);
     let finish: any;
     h.complete = () => new Promise((resolve) => { finish = resolve; });
@@ -394,11 +440,48 @@ test('session replacement or a newer answer suppresses stale publication without
     await h.waitForCall();
     if (change === 'session') h.ctx.sessionManager = SessionManager.inMemory(cwd);
     if (change === 'answer') h.sm.appendMessage(answer('Newer answer.'));
+    if (change === 'same-answer') h.sm.appendMessage(answer(requestTarget(h.calls[0][1])));
     if (change === 'busy') h.idle = false;
-    finish(answer(JSON.parse(h.calls[0][1].messages[0].content).assistantMessage));
+    finish(answer(rewrittenMock(requestTarget(h.calls[0][1]))));
     await pending;
+    assert.equal(h.calls.length, 1, 'stale results are discarded without retry');
     assert.equal(h.entries().length, 0);
+    assert.equal(h.rendered.length, 0);
   }
+});
+
+test('one call retains the selected model and style snapshot while the next command reads new preferences', async (t) => {
+  const h = await harness(t);
+  const alternate = { ...model, provider: 'anthropic', id: 'new-model', api: 'anthropic-messages' };
+  h.available = [model, alternate];
+  await saveStyleChoice(h.stylePath, 'terse');
+  const completion = deferred<any>();
+  h.complete = () => completion.promise;
+  const pending = h.run();
+  await h.waitForCall();
+  await saveStyleChoice(h.stylePath, 'slye');
+  await saveModelChoice(h.settingsPath, { provider: alternate.provider, modelId: alternate.id });
+  h.rewriteModel = { ...model, api: 'google-generative-ai', reasoning: false };
+  completion.resolve(answer(rewrittenMock(requestTarget(h.calls[0][1]))));
+  await pending;
+  assert.equal(h.calls.length, 1);
+  assert.deepEqual(h.findCalls, [[model.provider, model.id]]);
+  assert.deepEqual(h.calls[0][0], model);
+  assert.deepEqual(h.authCalls, [model]);
+  assert.deepEqual(h.providerCalls, [model.provider]);
+  assert.equal(h.calls[0][1].systemPrompt, buildStyleRequest(answer().content[0].text, 'terse', BUILTIN_CATALOG).system);
+  assert.equal(h.entries()[0].data.style, 'terse');
+  assert.equal(h.entries()[0].data.model, `${model.provider}/${model.id}`);
+  h.complete = async (_m: any, context: any) => answer(rewrittenMock(requestTarget(context)));
+  await h.run();
+  assert.equal(h.calls.length, 2);
+  assert.deepEqual(h.calls[1][0], alternate);
+  assert.deepEqual(h.authCalls, [model, alternate]);
+  assert.equal(h.calls[1][1].systemPrompt, buildStyleRequest(answer().content[0].text, 'slye', BUILTIN_CATALOG).system);
+  assert.notEqual(h.calls[0][2].sessionId, h.calls[1][2].sessionId);
+  assert.equal(h.entries()[1].data.style, 'slye');
+  assert.equal(h.entries()[1].data.model, `${alternate.provider}/${alternate.id}`);
+  assert.equal(h.ctx.model, mainModel);
 });
 
 test('picker saves a separate preference without an answer or model call, and fresh extensions retain it', async (t) => {
@@ -425,14 +508,16 @@ test('picker saves a separate preference without an answer or model call, and fr
   const fresh = await harness(t, true, h.agentDir);
   fresh.available = [model, alternate];
   await fresh.run();
-  assert.equal(fresh.calls[0][0], alternate);
+  assert.equal(fresh.calls.length, 1);
+  assert.deepEqual(fresh.calls[0][0], alternate);
   assert.equal(fresh.calls[0][2].reasoning, 'low');
   assert.equal(fresh.entries()[0].data.model, 'anthropic/reasoning-model');
   assert.equal(fresh.ctx.model, mainModel);
   assert.equal(fresh.ctx.thinkingLevel, 'high');
   fresh.ctx.sessionManager = reload(fresh.sm);
   await fresh.run();
-  assert.equal(fresh.calls[1][0], alternate);
+  assert.equal(fresh.calls.length, 2);
+  assert.deepEqual(fresh.calls[1][0], alternate);
   await fresh.run('model');
   assert.ok(fresh.picks[0][1].includes('anthropic/reasoning-model  (current)'));
 });
@@ -547,21 +632,24 @@ test('provider receives fresh resolved auth, headers, base URL and env with isol
   await h.run();
   assert.deepEqual(h.providerCalls, [model.provider]);
   assert.deepEqual(h.authCalls, [model]);
-  assert.deepEqual(h.calls[0][0], { ...model, baseUrl: h.authResult.baseUrl });
+  assert.equal(h.calls.length, 1);
+  for (const [selected, context, options] of h.calls) {
+    assert.deepEqual(selected, { ...model, baseUrl: h.authResult.baseUrl });
+    assert.equal(options.apiKey, h.authResult.apiKey);
+    assert.equal(options.headers, h.authResult.headers);
+    assert.equal(options.env, h.authResult.env);
+    assert.equal(options.reasoning, 'low');
+    assert.equal('reasoningEffort' in options, false);
+    assert.doesNotMatch(JSON.stringify(context), /FAKE|PRIVATE_/);
+  }
   assert.equal(model.baseUrl, undefined, 'auth override must not mutate the catalog model');
-  const options = h.calls[0][2];
-  assert.equal(options.apiKey, h.authResult.apiKey);
-  assert.equal(options.headers, h.authResult.headers);
-  assert.equal(options.env, h.authResult.env);
-  assert.equal(options.reasoning, 'low');
-  assert.equal('reasoningEffort' in options, false);
-  assert.doesNotMatch(JSON.stringify(h.calls[0][1]), /FAKE|PRIVATE_/);
   h.authResult = { ok: true, apiKey: 'FAKE_SECOND_KEY', headers: {}, env: {} };
   await h.run();
-  assert.equal(h.authCalls.length, 2, 'resolve auth for every invocation');
+  assert.equal(h.authCalls.length, 2, 'resolve auth once for every invocation');
+  assert.equal(h.calls.length, 2);
   assert.equal(h.calls[1][2].apiKey, 'FAKE_SECOND_KEY');
   assert.notEqual(h.calls[0][1], h.calls[1][1]);
-  assert.notEqual(h.calls[0][2].sessionId, h.calls[1][2].sessionId);
+  assert.equal(new Set(h.calls.map((call: any[]) => call[2].sessionId)).size, 2);
 });
 
 test('cancellation while resolving auth prevents the provider request and releases the command', async (t) => {
@@ -612,6 +700,7 @@ test('active reservation blocks overlapping invocations before async settings re
   const h = await harness(t);
   const pending = h.run();
   await h.run();
+  assert.equal(h.calls.length, 0);
   await pending;
   assert.equal(h.calls.length, 1);
   assert.match(h.notices.join(' '), /Wait for the current request/);
@@ -641,8 +730,8 @@ test('settings default only on ENOENT, reject invalid schema and replace files p
   assert.deepEqual(await readModelChoice(h.settingsPath), DEFAULT_MODEL);
 });
 
-test('all six built-in styles use the isolated protected runtime path with style metadata', async (t) => {
-  assert.equal(POLICY_VERSION, 8);
+test('all six built-in styles use one isolated raw-source call with style metadata', async (t) => {
+  assert.equal(POLICY_VERSION, 10);
   assert.equal(POLICY_VERSION, REWRITE_POLICY_VERSION);
   for (const style of STYLE_IDS) {
     await t.test(style, async (t) => {
@@ -657,12 +746,11 @@ test('all six built-in styles use the isolated protected runtime path with style
       assert.equal(context.messages[0].content, expected.user);
       assert.equal(context.messages.length, 1);
       assert.deepEqual(context.tools, []);
-      assert.equal(selected, model);
+      assert.deepEqual(selected, model);
       assert.equal(options.reasoning, 'low');
       assert.equal(options.cacheRetention, 'none');
       assert.notEqual(options.sessionId, h.sm.getSessionId());
-      assert.equal(tokens(target).length, 2);
-      assert.doesNotMatch(target.replace(/⟦KEEP_[^⟧]+⟧/g, ''), /config\.json|25/);
+      assert.equal(target, answer().content[0].text);
       assert.doesNotMatch(JSON.stringify(context), /PRIVATE_/);
       if (style === 'slye') assert.ok(context.messages[0].content.startsWith('Context:\n\n\nTarget:\n'));
       const entry = h.entries()[0];
@@ -680,17 +768,19 @@ test('all six built-in styles use the isolated protected runtime path with style
   }
 });
 
-test('SLYE discards damaged protected spans and respects cancellation', async (t) => {
+test('SLYE publishes transformed source facts unchanged but still discards cancelled results', async (t) => {
   const h = await harness(t);
+  const before = structuredClone(h.sm.buildSessionContext().messages);
+  const output = 'Use `settings.yaml` instead. Wait 99 minutes. See https://new.test/help.';
   h.complete = async (_m: any, context: any) => {
-    const token = tokens(requestTarget(context))[0];
-    assert.ok(token, 'fixture must contain protected text');
-    return answer(rewrittenMock(requestTarget(context)).replace(token, ''));
+    assert.equal(requestTarget(context), answer().content[0].text);
+    return answer(output);
   };
   await h.run('slye');
   assert.equal(h.calls.length, 1);
-  assert.equal(h.entries().length, 0);
-  assert.match(h.notices.join(' '), /exact-text checks/);
+  assert.equal(h.entries().length, 1);
+  assert.equal(h.entries()[0].data.text, output);
+  assert.deepEqual(h.sm.buildSessionContext().messages, before);
   const late = deferred<any>();
   h.complete = () => late.promise;
   const pending = h.run('slye');
@@ -698,9 +788,11 @@ test('SLYE discards damaged protected spans and respects cancellation', async (t
   h.loader.handleInput('\x1b');
   await pending;
   assert.equal(h.calls[1][2].signal.aborted, true);
-  late.resolve(answer(rewrittenMock(requestTarget(h.calls[1][1]))));
+  late.resolve(answer(output));
   await h.results[1];
-  assert.equal(h.entries().length, 0);
+  assert.equal(h.calls.length, 2);
+  assert.equal(h.entries().length, 1);
+  assert.deepEqual(h.sm.buildSessionContext().messages, before);
 });
 
 test('style picker saves each built-in without an answer, auth, provider or rewrite call', async (t) => {
@@ -849,4 +941,58 @@ test('legacy entries retain Plain English rendering and completions expose all n
   assert.deepEqual(complete('').map((item: any) => item.value), ['model', 'style', 'list', 'manage', ...STYLE_IDS]);
   assert.deepEqual(complete('sl').map((item: any) => item.value), ['slye']);
   assert.equal(complete('unknown'), null);
+});
+
+test('a custom plugin owns technical additions, omissions and changes; completed output is published verbatim', async (t) => {
+  t.after(clearDeclawPluginBridgeForTests);
+  const source = '\nUse `config.json` in /old/path with 25 seconds.\r\n' +
+    'Read [guide](https://old.test/docs), then run `npm test`.\r\n' +
+    'The old system does not support retries. Literal ⟦KEEP_source_0⟧.\n';
+  const instructions = 'Transform this tutorial for a different system. Add new commands and examples, ' +
+    'omit obsolete details, and change paths, numbers, links and claims as needed. ' +
+    'These transformation instructions control over default reading guidance.';
+  const received: string[] = [];
+  registerDeclawPlugin({
+    apiVersion: 1, id: 'technical-transform', name: 'Technical transformations', version: '1.0.0',
+    styles: [{
+      id: 'technical-transform/tutorial', name: 'New-system tutorial', relationship: 'Local preset', instructions,
+      buildUserPayload: (raw) => { received.push(raw); return JSON.stringify({ tutorial: raw }); },
+    }],
+  });
+  const outputs = {
+    additions: source + '\nRun `pnpm build` with 99 workers; see https://new.test/setup.\n```sh\necho new\n```',
+    omissions: 'Use the new system.',
+    changes: '\n  Use `settings.yaml` in /new/path with 5 minutes.\r\nThe system supports retries.\n',
+    'ordinary-token-like-text': '⟦KEEP_new_0⟧ ⟦KEEP_source_0⟧ ⟦KEEP_source_0⟧ and ⟦KEPT_changed⟧',
+  };
+  for (const [transformation, output] of Object.entries(outputs)) {
+    await t.test(transformation, async (t) => {
+      const h = await harness(t);
+      const sourceId = h.sm.appendMessage(answer(source));
+      const before = structuredClone(h.sm.buildSessionContext().messages);
+      h.complete = async (_m: any, context: any) => {
+        assert.equal(h.entries().length, 0);
+        assert.deepEqual(JSON.parse(context.messages[0].content), { tutorial: source });
+        assert.equal(context.messages.length, 1);
+        assert.deepEqual(context.tools, []);
+        assert.doesNotMatch(JSON.stringify(context), /PRIVATE_/);
+        assert.ok(context.systemPrompt.includes(DEFAULT_REWRITE_GUIDANCE));
+        assert.ok(context.systemPrompt.indexOf(DEFAULT_REWRITE_GUIDANCE) < context.systemPrompt.indexOf(instructions));
+        return answer(output);
+      };
+      await h.run('technical-transform/tutorial');
+      assert.equal(h.calls.length, 1);
+      assert.equal(h.calls[0][2].maxRetries, 0);
+      assert.equal(h.entries().length, 1);
+      assert.equal(h.entries()[0].data.text, output, 'no host editing, trimming or literal restoration');
+      assert.equal(h.entries()[0].data.sourceEntryId, sourceId);
+      assert.equal(h.entries()[0].data.style, 'technical-transform/tutorial');
+      assert.equal(h.entries()[0].data.stylePlugin, 'technical-transform');
+      assert.match(h.rendered[0], /New-system tutorial/);
+      assert.deepEqual(latestAnswer(h.sm.getBranch()), { id: sourceId, text: source });
+      assert.deepEqual(h.sm.buildSessionContext().messages, before);
+      assert.deepEqual(reload(h.sm).buildSessionContext().messages, before);
+    });
+  }
+  assert.deepEqual(received, Object.values(outputs).map(() => source));
 });

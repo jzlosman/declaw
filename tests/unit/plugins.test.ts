@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   BUILTIN_STYLE_IDS,
+  DEFAULT_REWRITE_GUIDANCE,
   StyleCatalog,
   buildStyleRequest,
 } from "../../src/domain/styles.ts";
@@ -61,10 +62,11 @@ test("catalog rejects duplicate plugins and styles outside their plugin namespac
   assert.throws(() => catalog.register({ ...piratePlugin, id: "builtin/other", styles: [{ ...pirateStyle, id: "plain" }] }), /already registered/);
 });
 
-test("plugin request receives host fidelity rules and never imports Pi context", () => {
+test("plugin request receives advisory defaults before its own instructions and raw source", () => {
   const catalog = new StyleCatalog([piratePlugin]);
   const request = buildStyleRequest("Keep `config.json`.", "pirate/pirate", catalog);
-  assert.match(request.system, /Package preservation rules/);
+  assert.ok(request.system.startsWith(DEFAULT_REWRITE_GUIDANCE));
+  assert.ok(request.system.indexOf(pirateStyle.instructions) > request.system.indexOf(DEFAULT_REWRITE_GUIDANCE));
   assert.match(request.system, /pirate-flavored/);
   assert.equal(request.user, JSON.stringify({ assistantMessage: "Keep `config.json`." }));
 });
