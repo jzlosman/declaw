@@ -1,6 +1,6 @@
 {
   "name": "pi-declaw",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": false,
   "description": "Rewrite completed Pi answers into clearer readings without changing the original conversation.",
   "license": "Apache-2.0",
