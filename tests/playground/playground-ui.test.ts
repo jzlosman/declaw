@@ -108,6 +108,28 @@ test("all examples and modes update both views, keeping the user's toggle choice
     }
   }
 });
+test("SLYE is selectable on desktop and mobile across every example", async () => {
+  for (const mobile of [false, true]) {
+    const a = app(mobile);
+    assert.ok(a.modes.some(mode => mode.dataset.mode === "slye"));
+    assert.ok(a.get("#mode-select").children.some(option => option.value === "slye"));
+    for (const sample of data.cases) {
+      await a.cases.find(button => button.dataset.case === sample.id)!.click();
+      if (mobile) {
+        a.get("#mode-select").value = "slye";
+        await a.get("#mode-select").emit("change");
+      } else await a.modes.find(button => button.dataset.mode === "slye")!.click();
+      const expected = sample.variants.find(variant => variant.mode === "slye")!;
+      assert.equal(a.get("#rewrite-label").textContent, "Speak Like You Eat");
+      assert.equal(a.get("#rewrite-content").innerHTML, expected.afterHtml);
+      assert.equal(a.get("#unified-content").innerHTML, expected.unifiedHtml);
+      await a.copies[1].click();
+      assert.equal(a.clipboard.at(-1), expected.text);
+      assert.ok(a.location.hash.includes("mode=slye"));
+    }
+  }
+});
+
 test("native mobile selectors update the displayed example and mode", async () => {
   const a = app(true);
   a.get("#example-select").value = "ordered-recovery";

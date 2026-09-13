@@ -41,10 +41,24 @@ adaptations, and prompt sources.
 
 ## Data
 
-`samples.json` contains four synthetic inputs and twenty reviewed historical outputs.
-The recordings use the earlier five-style package and are labeled accordingly.
-Speak Like You Eat is built into the Declaw extension but has no public recording yet.
-Do not relabel old outputs or invent new examples.
+`samples.json` is a version-2 snapshot with four synthetic inputs and 24 saved
+outputs covering all six built-in styles, including Speak Like You Eat. Each
+output comes from the historical policy-8 single-pass pipeline and includes its
+run ID, recording date, model, prompt version, and SHA-256 system-prompt hash.
+These recordings use earlier prompts and exact-text protection, not the current
+plugin-owned transformation policy.
+
+Exact-text checks are not semantic certification. These saved examples are not a
+guarantee of accuracy or a first-attempt success-rate benchmark. Private reviews
+retain failures; each output identifies its actual recording run. Saved output
+text is never hand-edited. Do not relabel old outputs or invent new examples.
+
+When refreshing the demo, generate all four cases across all six styles in the
+private lab, retain every attempt, and review outputs before promoting them.
+The public snapshot tests require the complete matrix and hashes matching the
+recorded policy-8 prompts, not the evolving runtime prompts; legacy-schema support
+is tested separately. Future recordings must identify their actual prompt policy
+and retain raw outputs in the private lab; do not relabel historical results.
 
 `markdown.ts` renders a bounded inert subset of Markdown. Raw HTML is escaped.
 Links and images do not load. `unified.ts` and `inline-diff.ts` align safe rendered

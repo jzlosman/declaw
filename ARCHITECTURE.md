@@ -2,7 +2,7 @@
 
 ## Bounded context
 
-Declaw owns the **Answer Rewriting** bounded context. Its authority is the completed
+Declaw owns the **Answer Rewriting** bounded context. Its input is the completed
 assistant answer. It does not own the main agent conversation, provider credentials,
 model selection, Pi navigation, or browser-generated output.
 
@@ -10,7 +10,7 @@ model selection, Pi navigation, or browser-generated output.
 Pi command/UI ──► application action ──► domain plan
       ▲                    │                 │
       │                    │                 ├── StyleCatalog
-      │                    │                 └── Preservation policy
+      │                    │                 └── Output limits
       │                    ▼
       └── DisplayWriter ◄── accepted result ◄─ RewriteModel
 ```
@@ -27,12 +27,12 @@ composition root      → wires built-ins, registered plugins, and adapters
 The files map to this boundary as follows:
 
 - `src/domain/styles.ts`: style identity, plugin catalog, status, and request composition.
-- `src/domain/preservation.ts`: host-owned exact-text protection and validation.
-- `src/domain/rewrite.ts`: rewrite policy, limits, and domain outcomes.
+- `src/domain/rewrite.ts`: synchronous preparation, size limits, and duplicate-output checks.
 - `src/plugin-api.ts`: framework-free plugin port and registration bridge.
 - `src/plugins/built-in/*`: one self-contained module per built-in plugin; each owns its
   prompt, provenance, and payload adapter. `src/plugins/built-in/index.ts` only aggregates them.
-- `src/application/rewrite.ts`: rewrite use case and explicit completion/publication ports.
+- `src/application/rewrite.ts`: single-call orchestration and explicit publication ports.
+- `src/application/cancellation.ts`: stop waiting while observing late provider rejections.
 - `src/adapters/pi.ts`: Pi message/session/request translation.
 - `src/adapters/model.ts`: Pi model/auth/provider translation and model selection.
 - `src/adapters/settings.ts`: filesystem preference adapter.
@@ -43,15 +43,23 @@ The files map to this boundary as follows:
 
 | Action | Reads | Effects | Success projection |
 |---|---|---|---|
-| Rewrite latest answer | current branch, style, model settings | isolated model call, then append custom entry | display-only rewrite |
+| Rewrite latest answer | current branch, style, model settings | one isolated model call, then append custom entry | display-only final reading |
 | Choose style | style catalog, current preference | preference file write | future rewrite default |
 | Choose model | Pi model registry/auth | preference file write | future rewrite provider |
 | List plugins | catalog, status file | none | status text |
 | Manage plugins | catalog, status file | status file write | active/disabled catalog |
 
-The rewrite path masks exact source spans, builds a plan, calls the model, validates
-returned tokens, and only then appends a custom entry. The original answer is never
-mutated or reintroduced as a model message.
+The domain checks input bounds and snapshots the original answer. The application
+requests one transformation using the selected model and style. The plugin's payload
+formatter receives the original, unmasked answer. Short host guidance is advisory;
+the selected style owns what to change, omit, or add. There is no editor, semantic
+judge, token masking, or exact-text rejection in the runtime.
+
+Cancellation and source currency are checked before and after the call. The command
+adapter owns a 60-second deadline. Provider retries are disabled. Complete, nonempty,
+bounded output that differs from the source can become a display entry, regardless
+of whether it follows Declaw's default preferences. The original answer and future
+main-agent context remain untouched.
 
 ## Plugin lifecycle
 
@@ -69,19 +77,22 @@ handles Pi extension load order; explicit package installation remains the trust
 
 ## Outcome model
 
-- **Accepted** — output passes completion, unchanged-text, and exact-preservation checks.
-- **Rejected** — output is incomplete, unchanged, oversized, or damages protected text.
-- **Cancelled** — user or Pi lifecycle cancels the attempt; nothing is appended.
-- **Indeterminate** — provider/network failure leaves the external outcome unknown;
-  the original remains authoritative and no display entry is appended.
+- **Accepted** — complete output is nonempty, within bounds, and differs from the source.
+- **Rejected** — input or output violates size/empty-text limits, or output is unchanged.
+- **Cancelled** — user, deadline, or Pi lifecycle cancels the operation; nothing is appended.
+- **Stale** — the source is no longer current; no later stage or publication occurs.
+- **Failed** — the model adapter fails or returns an incomplete completion;
+  provider diagnostics are not exposed to the UI.
 
-These outcomes are deliberately not collapsed into a boolean. The provider adapter
-owns provider-specific errors; the domain owns semantic acceptance.
+These outcomes are deliberately not collapsed into a boolean. Operational failure
+is not an input/output rejection: a remote invocation may have occurred even when
+its result is unavailable. The original stays authoritative in every non-accepted outcome.
+The domain owns deterministic acceptance, not a claim that the LLM proved fidelity.
 
 ## Test strategy
 
 - Domain tests: style identity, plugin namespace, collision, status, payload composition,
-  masking, and preservation.
+  raw-source formatting, output bounds, and plugin-owned transformations.
 - Application tests: fake completion gateway, rejection, cancellation, and no-write behavior.
 - Adapter tests: Pi message normalization, provider serialization, filesystem settings,
   and custom-entry rendering.

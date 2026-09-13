@@ -11,17 +11,19 @@ that shorter means better.
   from being attached to a different branch or newer answer.
 - **Reading style** — a named presentation policy, such as Terse or SLYE.
 - **Style definition** — a style's stable ID, label, provenance, instructions, and
-  protected-answer payload formatter.
+  original-answer payload formatter.
 - **Style plugin** — a trusted package contribution containing one or more definitions.
 - **Style catalog** — the host-owned registry that validates IDs, namespaces,
   collisions, provenance, and active/disabled status.
 - **Style snapshot** — style label, plugin ID, and plugin version saved with a
   display entry so historical entries remain readable after plugin removal.
-- **Protected answer** — source text with exact spans replaced by temporary tokens.
-- **Rewrite request** — protected answer plus style instructions and selected model.
-- **Rewrite attempt** — one isolated, tool-free provider invocation.
-- **Rewrite result** — accepted text, unchanged text, preservation rejection,
-  cancellation, or operational failure.
+- **Rewrite request** — original answer formatted by the plugin, with advisory host
+  guidance, selected style instructions, and selected model.
+- **Rewrite attempt** — one isolated model call, without retries or a mandatory editor.
+- **Plugin-owned transformation** — the style chooses how to change content; host
+  guidance is a default, not a fidelity enforcement policy.
+- **Rewrite result** — accepted final text, explicit policy rejection, cancellation,
+  stale-source suppression, or operational failure.
 - **Display rewrite** — a Pi custom entry rendered to the user but excluded from
   future agent context.
 
@@ -39,7 +41,7 @@ that shorter means better.
   projection, not a new assistant message.
 - **Provenance** — where a style or output came from and how it relates to its source.
 - **Indeterminate** — an operational outcome where the provider result cannot be
-  known. It is not the same as a semantic rejection.
+  known. It is not the same as rejecting empty or oversized output.
 
 ## Non-domain concerns
 

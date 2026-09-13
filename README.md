@@ -18,7 +18,7 @@ There are good tools for cleaning it up: [Paseo Plain](https://github.com/scowal
 
 Used as ordinary prompts or skills, though, these styles can bleed into the rest of the conversation. That can change how the agent reads your requests and writes its next answer.
 
-Paseo Plain was the inspiration for Declaw. It does this as a plugin for Paseo; Declaw takes the idea one step lower in the chain and implements it directly in Pi. A separate `pi` instance with no tools, skills, or extensions rewrites the most recent response, and the result is display-only. The original conversation stays untouched, while the same boundary supports Paseo Plain, the other styles above, and third-party plugins.
+Paseo Plain was the inspiration for Declaw. It does this as a plugin for Paseo; Declaw takes the idea one step lower in the chain and implements it directly in Pi. One isolated, tool-free model request transforms the most recent response into a display-only reading. The original conversation stays untouched, while the same boundary supports Paseo Plain, the other styles above, and third-party plugins.
 
 [Try the hosted playground](https://jzlosman.github.io/declaw/) · [Install Declaw](#install)
 
@@ -77,9 +77,10 @@ Attribution doesn't imply endorsement or certification.
 
 ## Plugin architecture
 
-Declaw protects the answer, calls the model, and displays the rewrite without adding
-it to the agent's context. Plugins supply style instructions and the format used to
-send the protected answer to the model.
+Declaw sends the original answer through the selected style in one model call.
+Plugins define the transformation and its input format. Host guidance offers defaults,
+not an overriding policy: plugins may simplify, reorganize, omit, or add content.
+The result is display-only and never enters the main agent's context.
 
 Plugin IDs stay fixed, and each plugin has its own namespace for styles. Declaw rejects
 ID collisions and saves your enable/disable choices separately from plugin code.
@@ -89,18 +90,14 @@ The [`declaw-style-pirate` example](https://github.com/jzlosman/declaw-style-pir
 is a small, working third-party plugin. For the internals, see
 [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`GLOSSARY.md`](GLOSSARY.md).
 
-## What Declaw preserves
+## Your style, your transformation
 
-Before sending an answer to the model, Declaw protects commands, paths, links, code,
-quotations, numbers, names, and other technical text. It rejects rewrites that drop,
-duplicate, reorder, or invent protected text.
+Styles choose what to do with the answer. Declaw does not mask technical text, judge
+semantic fidelity, or run a second editor pass. A plugin can intentionally change
+content without being rejected for disagreeing with the host's preferences.
 
-It also checks for changes in meaning: `may` must not become `will`, an action the
-assistant offers to take must not become an instruction to you, and prerequisites
-must not become broader. Recommendations must keep their reasons, and useful tables
-must stay tables.
-
-These checks can miss changes in meaning. Compare important rewrites with the original.
+The original conversation stays untouched. Empty, oversized, incomplete, and unchanged
+results are not added as new readings; cancellation and stale results are also discarded.
 
 ## Context isolation, privacy, and limits
 
@@ -109,8 +106,8 @@ tool planning, skill or prompt evaluation, or session compaction, so the new wor
 can't influence its later work. Pi saves rewrites as display-only session entries;
 they're still visible after reload.
 
-The rewrite model receives only the one protected answer. Declaw doesn't send it
-conversation history, earlier requests, project files, tools, or reasoning.
+The model receives the original answer through the plugin's input formatter, not
+conversation history, earlier requests, project files, tools, or main-agent reasoning.
 
 Declaw has its own model and style settings. Your main agent's model and thinking
 level stay unchanged. The default rewrite model is:
@@ -120,7 +117,8 @@ openai-codex/gpt-5.6-luna · low thinking
 ```
 
 You need to be signed in to the selected provider, and provider charges apply.
-Requests time out after 60 seconds, with provider retries disabled.
+Each rewrite uses one call with fresh authentication resolution. The operation has
+a 60-second deadline, with provider retries disabled.
 
 Declaw requires Pi's terminal UI and handles one rewrite at a time. It won't rewrite
 incomplete answers, tool-call results, or answers over 32,000 characters.
@@ -135,9 +133,10 @@ npm run build:playground
 open dist/playground/index.html
 ```
 
-The examples were reviewed but come from the older five-style demo. They're labeled
-as historical and don't include SLYE. The site is live, but the examples aren't a
-guarantee that rewrites always preserve meaning.
+The playground includes all six built-in styles, including Speak Like You Eat:
+four synthetic inputs and 24 historical single-pass outputs from policy 8.
+Each output retains its model, run, and prompt provenance. These historical recordings
+use earlier prompts and protection rules, not the current runtime policy.
 
 The private lab for generating and reviewing examples lives outside this repository.
 See [SOURCES.md](SOURCES.md) for pinned source versions, licenses, and adaptations.
@@ -151,6 +150,8 @@ npm run build:playground
 ```
 
 Tests use synthetic answers and fake model responses, with no live model calls.
+GEPA experiments live in a separate private development lab. GEPA and Python are
+not extension dependencies, installation steps, runtime services, or release requirements.
 
 The active GitHub Pages workflow, `.github/workflows/pages.yml`, builds only
 `dist/playground/` from [jzlosman/declaw](https://github.com/jzlosman/declaw) and publishes

@@ -1,10 +1,11 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { BorderedLoader } from "@earendil-works/pi-coding-agent";
 import type { StyleCatalog } from "../domain/styles.ts";
-import { abortable, ENTRY_TYPE, MAX_INPUT_CHARS, PlainError, POLICY_VERSION, REWRITE_THINKING, TIMEOUT_MS, type PlainEntry } from "../domain/rewrite.ts";
-import { completedText, latestAnswer } from "./pi.ts";
-import { executeRewrite } from "../application/rewrite.ts";
-import { chooseModel, completeRewrite, supportsLowThinking } from "./model.ts";
+import { ENTRY_TYPE, MAX_INPUT_CHARS, POLICY_VERSION, REWRITE_THINKING, type PlainEntry } from "../domain/rewrite.ts";
+import { PlainError, rewriteFailureMessage } from "./errors.ts";
+import { latestAnswer } from "./pi.ts";
+import { executeRewrite, REWRITE_TIMEOUT_MS } from "../application/rewrite.ts";
+import { chooseModel, createRewriteGateway, supportsLowThinking } from "./model.ts";
 import { readModelChoice, readPluginStatuses, readStyleChoice, savePluginStatuses, saveStyleChoice } from "./settings.ts";
 import { isStyleId } from "../domain/styles.ts";
 
@@ -132,7 +133,8 @@ export function createDeclawCommand({ pi, catalog, settingsPath, stylePath, plug
           return;
         }
         const style = isStyleId(command) && command ? command : await readStyleChoice(stylePath, catalog);
-        const styleRecord = catalog.get(style);
+        const selected = catalog.get(style);
+        const styleRecord = selected && { ...selected, style: { ...selected.style } };
         if (!styleRecord) {
           ctx.ui.notify(`The Declaw style ${style} is unavailable or disabled. Run /declaw style or /declaw manage.`, "warning");
           return;
@@ -152,18 +154,13 @@ export function createDeclawCommand({ pi, catalog, settingsPath, stylePath, plug
           ctx.ui.notify("The selected model lacks low thinking support. Run /declaw model to choose another.", "warning");
           return;
         }
-        timeout = setTimeout(() => { timedOut = true; controller.abort(); }, TIMEOUT_MS);
+        const gateway = createRewriteGateway(ctx.modelRegistry, model, styleRecord);
+        timeout = setTimeout(() => { timedOut = true; controller.abort(); }, REWRITE_TIMEOUT_MS);
         const result = await ctx.ui.custom<Result | undefined>((tui, theme, _keys, done) => {
           const loader = new BorderedLoader(tui, theme, `Rewriting with ${styleRecord.style.name} · ${model.id} · ${REWRITE_THINKING} thinking…`);
           loader.onAbort = () => controller.abort();
           const work = executeRewrite(source, controller.signal, {
-            complete: async (masked, requestSignal) => {
-              requestSignal.throwIfAborted();
-              const response = await completeRewrite(ctx.modelRegistry, model, masked, requestSignal, style, catalog);
-              const text = completedText(response);
-              if (text === undefined) throw new PlainError("The model did not return a complete rewrite. The original is unchanged.");
-              return text;
-            },
+            ...gateway,
             isCurrent: (candidate) => ctx.sessionManager.getSessionId() === sessionId && ctx.isIdle() &&
               latestAnswer(ctx.sessionManager.getBranch())?.id === candidate.id,
             publish: ({ sourceEntryId, text }) => pi.appendEntry<PlainEntry>(ENTRY_TYPE, {
@@ -173,8 +170,16 @@ export function createDeclawCommand({ pi, catalog, settingsPath, stylePath, plug
               styleVersion: styleRecord.pluginVersion,
             }),
           });
-          void abortable(work, controller.signal).then(
-            (accepted) => done(accepted.kind === "accepted" ? { text: accepted.text } : { stale: true }),
+          void work.then(
+            (outcome) => {
+              switch (outcome.kind) {
+                case "accepted": done({ text: outcome.text }); break;
+                case "cancelled": done({ cancelled: true }); break;
+                case "stale": done({ stale: true }); break;
+                case "rejected":
+                case "failed": done({ error: rewriteFailureMessage(outcome) }); break;
+              }
+            },
             (error: unknown) => done(controller.signal.aborted ? { cancelled: true } :
               { error: error instanceof PlainError ? error.message : "The rewrite failed. The original is unchanged." }),
           );
@@ -182,7 +187,7 @@ export function createDeclawCommand({ pi, catalog, settingsPath, stylePath, plug
         });
         if (controller.signal.aborted || !result || "cancelled" in result || "stale" in result) {
           if (active === controller && !controller.signal.aborted) controller.abort();
-          if (timedOut) ctx.ui.notify("The rewrite timed out after 60 seconds. The original is unchanged.", "warning");
+          if (timedOut) ctx.ui.notify(`The rewrite timed out after ${REWRITE_TIMEOUT_MS / 1000} seconds. The original is unchanged.`, "warning");
           return;
         }
         if ("error" in result) {

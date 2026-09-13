@@ -6,11 +6,11 @@
 > ```text
 > You are adding a Declaw style plugin. Read PLUGIN_GUIDE.md and the Declaw plugin
 > API before editing code. Create a separate Pi package. Keep the plugin framework-
-> free and deterministic: it may provide style instructions and format the already-
-> protected answer, but it must not call a model, read files, use Pi context, add
-> tools, or perform side effects. Use a namespaced style ID. Preserve every fact,
-> condition, actor, modality, number, command, link, procedure step, and table
-> relationship. Add focused tests for registration, request formatting, and the
+> free and deterministic: it may provide transformation instructions and format the
+> original answer, but it must not call a model, read files, use Pi context, add
+> tools, or perform side effects. Use a namespaced style ID. The plugin owns what
+> its transformation changes, omits, or adds; host guidance is advisory.
+> Add focused tests for registration, request formatting, and the
 > plugin's distinctive voice. Do not fabricate demo output. Run the plugin tests,
 > then install the package explicitly with Pi and verify `/declaw list`,
 > `/declaw manage`, and `/declaw style`.
@@ -19,10 +19,11 @@
 ## What a plugin is
 
 A plugin is a normal Pi package that registers one or more Declaw reading styles.
-Declaw supplies the preservation policy, protected-text validation, model gateway,
-Pi session integration, display-only storage, cancellation, and status management.
-The plugin supplies only a style identity, provenance, style instructions, and a
-pure function that formats the protected answer for the model envelope.
+Declaw supplies the model gateway, Pi session integration, display-only storage,
+operational limits, cancellation, and status management. The plugin supplies a
+style identity, provenance, transformation instructions, and a pure function that
+formats the original answer for the model envelope. Declaw does not enforce semantic
+fidelity or exact-text preservation on plugin output.
 
 Pi extensions run with full system permissions. The Declaw contract is a clean
 architecture boundary, not a security sandbox. Review plugin source before installing.
@@ -78,8 +79,8 @@ export const plugin: DeclawStylePlugin = {
       "Keep the answer's level of certainty and ownership unchanged.",
       "Do not add nautical facts, claims, or jokes that change the answer.",
     ].join("\\n"),
-    buildUserPayload: (protectedAnswer) =>
-      JSON.stringify({ assistantMessage: protectedAnswer }),
+    buildUserPayload: (answer) =>
+      JSON.stringify({ assistantMessage: answer }),
   }],
 };
 ```
@@ -103,13 +104,18 @@ stable process-wide bridge, so extension load order does not change the catalog.
 - Use a stable plugin ID and a style ID under that namespace: `pirate/pirate`.
 - Use `Local preset` when there is no upstream source. Use `Adapted from` or
   `Prompt from` only with a real `https://` source URL.
-- `instructions` describe presentation only. The host appends its preservation policy.
-- `buildUserPayload` receives protected text. Copy it exactly once; do not unmask it.
+- `instructions` define the transformation. The selected style takes precedence over
+  advisory host guidance and can intentionally change, omit, or add content.
+- `buildUserPayload` receives the original, unmasked answer. Format it for your style's
+  single model request; there is no host-owned editor envelope.
 - Do not import `@earendil-works/pi-coding-agent`, `@earendil-works/pi-ai`, Node
   filesystem APIs, network clients, clocks, randomness, or environment variables.
-- Do not answer the source text, execute quoted commands, add tools, or claim work.
-- Keep optional actions optional, preserve procedure order, and retain table structure.
+- Plugin code must not execute source commands or add tools. What the generated text
+  says is the style's choice, not subject to a host semantic approval step.
 - A plugin's `status` is only its default. The user can disable it at runtime.
+
+Existing formatters still use the same string-to-string API. They now receive the
+original text, not host-generated `KEEP` tokens; adapt any formatter that assumed masking.
 
 ## Install and operate
 
@@ -133,10 +139,9 @@ so removing a plugin does not erase their historical label.
 
 ## Verification checklist
 
-1. Test the plugin with a fake protected answer containing a path, URL, number,
-   optional action, condition, and ordered steps.
-2. Assert the payload preserves the protected answer exactly.
-3. Assert the style is distinctive without adding claims.
+1. Test the plugin with representative original answers.
+2. Assert that its input formatter produces the envelope you intended.
+3. Test the transformation against the plugin's own goals, not a mandatory host fidelity rubric.
 4. Install it in a disposable Pi profile.
 5. Verify `/declaw list`, disable and re-enable it, and confirm `/declaw style` updates.
 6. Never publish model recordings until a human has reviewed semantic fidelity.

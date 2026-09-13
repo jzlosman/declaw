@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { PlainError, REWRITE_MODEL, REWRITE_PROVIDER } from "../domain/rewrite.ts";
+import { REWRITE_MODEL, REWRITE_PROVIDER } from "../domain/rewrite.ts";
+import { PlainError } from "./errors.ts";
 import { DEFAULT_STYLE_ID, isStyleId, type PluginStatus, type StyleCatalog, type StyleId } from "../domain/styles.ts";
 import { BUILTIN_CATALOG } from "../plugins/built-in/catalog.ts";
 
